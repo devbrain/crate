@@ -1,0 +1,59 @@
+
+1) Basic test - three files in root directory
+2) Basic test - three files in 'subdir' directory
+3) Basic test - the same files in the root and some in 'subdir' directory
+4) Two files encrypted with password 'qwerty'
+5) Two files encrypted, including archive header - password is 'qwerty'
+6) Comment added to archive
+7) Locked archive
+8) one file in archive with full path
+9) max compression level
+10) three version of the same file
+11) file name with national characters in root dir
+12) file name with national characters in 'subdir' dir
+13) file name with national characters in subdir with national characters in name
+14) 1+2+3+6+7+8+9+11+12+13
+15) used rar5 with compression v4
+16) used rar 3.9.2
+17) multivolume
+18) with syn links to file also included in the archive
+19) encrypted with password using national characters - żółć
+20) archive with comment added - zółć
+21) like 13 but packed using rar 3
+22) like 19 but packed using rar 3
+23) like 18 but packed using rar 3
+24) with symlink to a file in subdir
+25) with symlink to /tmp/1.txt
+26) with symlink to ../2.txt
+27) with hardlink
+28) with unix owner and group stored
+29) with identical files stored as rar references
+30) with symbolic links with NLS
+31) with symbolic link to with national characters
+32) with symbolic link to /tmp (absolute path)
+33) one file, packed with WinRAR
+34) like 11, but packed with WinRAR
+35) like 13 with comment żółć, but packed with WinRAR
+36) with NTFS junction point (WinRAR)
+37) with hard link to a file (WinRAR)
+38) with symlink to a file (WinRAR)
+39) with junction point to a directory (WinRAR)
+40) with symlink to a drectory (WinRAR)
+41) with junction to a directory with national characters (WinRAR)
+42) with symlink to a directory with national character (WinRAR)
+43) with junction to a file with national characters (WinRAR)
+44) with hardlink to a file with national characters (WinRAR)
+45) with symlink to a file with national characters (WinRAR)
+46) with symlink to outside of archive and with national characters (WinRAR)
+47) with symlink to a target with national characters make with rar3
+48) with filter in filelist
+49) with filter in -n@
+50) with filter in -x@
+51) with filter in -x@ and utf-8 filelist (w/ -sc)
+52) with filter in -x@ and utf-16 filelist (w/ -sc)
+53) with filter in -x@ and utf-16 filelist (w/o -sc)
+54) Windows SFX archive
+55) Linux SFX archive
+56) Linux SFX archive with file name with national characters
+57) Multivolume rar3 archive with a missing volume and recovery volume
+57) Multivolume rar5 archive with a missing volume and recovery volume

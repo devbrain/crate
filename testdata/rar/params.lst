@@ -1,0 +1,58 @@
+x -y tests/unrar_test_01.rar
+x -y tests/unrar_test_02.rar
+x -y tests/unrar_test_03.rar
+x -y -pqwerty tests/unrar_test_04.rar
+x -y -pqwerty tests/unrar_test_05.rar
+x -y tests/unrar_test_06.rar
+x -y tests/unrar_test_07.rar
+x -y tests/unrar_test_08.rar
+x -y tests/unrar_test_09.rar
+x -y tests/unrar_test_10.rar
+x -y tests/unrar_test_11.rar
+x -y tests/unrar_test_12.rar
+x -y tests/unrar_test_13.rar
+x -y tests/unrar_test_14.rar
+x -y tests/unrar_test_15.rar
+x -y tests/unrar_test_16.rar
+x -y tests/unrar_test_17.part1.rar
+x -y tests/unrar_test_18.rar
+x -y -p¿ó³æ tests/unrar_test_19.rar
+x -y tests/unrar_test_20.rar
+x -y tests/unrar_test_21.rar
+x -y -p¿ó³æ tests/unrar_test_22.rar
+x -y tests/unrar_test_23.rar
+x -y tests/unrar_test_24.rar
+x -y -ola tests/unrar_test_25.rar
+x -y -ola tests/unrar_test_26.rar
+x -y tests/unrar_test_27.rar
+x -y tests/unrar_test_28.rar
+x -y tests/unrar_test_29.rar
+x -y tests/unrar_test_30.rar
+x -y tests/unrar_test_31.rar
+x -y -ola tests/unrar_test_32.rar
+x -y tests/unrar_test_33.rar
+x -y tests/unrar_test_34.rar
+x -y tests/unrar_test_35.rar
+x -y tests/unrar_test_36.rar
+x -y tests/unrar_test_37.rar
+x -y tests/unrar_test_38.rar
+x -y tests/unrar_test_39.rar
+x -y tests/unrar_test_40.rar
+x -y tests/unrar_test_41.rar
+x -y tests/unrar_test_42.rar
+x -y tests/unrar_test_43.rar
+x -y tests/unrar_test_44.rar
+x -y tests/unrar_test_45.rar
+x -y -ola tests/unrar_test_46.rar
+x -y tests/unrar_test_47.rar
+x -y tests/unrar_test_13.rar @tests/unrar_test_13_excl_iso8859-2.lst
+x -y -n@tests/unrar_test_13_excl_iso8859-2.lst tests/unrar_test_13.rar
+x -y -x@tests/unrar_test_13_excl_iso8859-2.lst tests/unrar_test_13.rar
+x -y -scfl -x@tests/unrar_test_13_excl_utf8.lst tests/unrar_test_13.rar
+x -y -scul -x@tests/unrar_test_13_excl_utf16.lst tests/unrar_test_13.rar
+x -y -x@tests/unrar_test_13_excl_utf16.lst tests/unrar_test_13.rar
+x -y tests/unrar_test_54.exe
+x -y tests/unrar_test_55.sfx
+x -y tests/unrar_test_56.sfx
+x -y tests/unrar_test_57.part1.rar
+x -y tests/unrar_test_58.part1.rar

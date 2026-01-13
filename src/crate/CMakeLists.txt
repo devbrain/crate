@@ -1,0 +1,202 @@
+# ============================================================================
+# Source files
+# ============================================================================
+
+set(CRATE_SOURCES
+        crate.cc
+        compression/arj_lz.cc
+        compression/decompressor.cc
+        compression/diet.cc
+        compression/explode.cc
+        compression/inflate.cc
+        compression/lzh.cc
+        compression/lzss.cc
+        compression/lzx.cc
+        compression/mszip.cc
+        compression/quantum.cc
+        compression/rar_filters.cc
+        compression/rar_ppm.cc
+        compression/rar_unpack.cc
+        core/bitstream.cc
+        core/crc.cc
+        core/error.cc
+        core/huffman.cc
+        core/lru_cache.cc
+        core/path.cc
+        core/system.cc
+        core/types.cc
+        crypto/aes_decoder.cc
+        crypto/rar_crypt.cc
+        crypto/sha.cc
+        formats/ace.cc
+        formats/arc.cc
+        formats/archive.cc
+        formats/arj.cc
+        formats/cab.cc
+        formats/chm.cc
+        formats/ha.cc
+        formats/hyp.cc
+        formats/kwaj.cc
+        formats/lha.cc
+        formats/rar.cc
+        formats/szdd.cc
+        formats/zip.cc
+        formats/zoo.cc
+        vfs/vfs.cc
+)
+
+set(CRATE_PUBLIC_HEADERS
+        ${PROJECT_SOURCE_DIR}/include/crate/crate.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/diet.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/explode.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/inflate.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/core/decompressor.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/core/vfs.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/core/error.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/core/system.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/core/types.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/ace.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/arc.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/archive.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/arj.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/cab.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/chm.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/ha.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/hyp.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/kwaj.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/lha.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/rar.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/szdd.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/zip.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/zoo.hh
+)
+
+set(CRATE_PRIVATE_HEADERS
+        include/crate/compression/arj_lz.hh
+        include/crate/compression/lzh.hh
+        include/crate/compression/lzss.hh
+        include/crate/compression/lzx.hh
+        include/crate/compression/mszip.hh
+        include/crate/compression/quantum.hh
+        include/crate/compression/rar_filters.hh
+        include/crate/compression/rar_ppm.hh
+        include/crate/compression/rar_unpack.hh
+        include/crate/core/bitstream.hh
+        include/crate/core/crc.hh
+        include/crate/core/huffman.hh
+        include/crate/core/lru_cache.hh
+        include/crate/core/path.hh
+        include/crate/crypto/aes_decoder.hh
+        include/crate/crypto/rar_crypt.hh
+        include/crate/crypto/sha.hh
+        include/crate/formats/arc_internal.hh
+        include/crate/formats/hyp_internal.hh
+)
+
+# Optional libarchive wrapper sources
+if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
+    list(APPEND CRATE_SOURCES
+        formats/libarchive_archive.cc
+    )
+    list(APPEND CRATE_PUBLIC_HEADERS
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/libarchive_archive.hh
+    )
+endif()
+
+# Embedded third-party sources (miniz 3.x has split source files)
+set(CRATE_THIRDPARTY_SOURCES
+        ${miniz_SOURCE_DIR}/miniz.c
+        ${miniz_SOURCE_DIR}/miniz_tinfl.c
+        ${miniz_SOURCE_DIR}/miniz_tdef.c
+)
+
+# ============================================================================
+# OBJECT library for internal use (testing)
+# ============================================================================
+
+add_library(crate_objects OBJECT
+        ${CRATE_SOURCES}
+        ${CRATE_PUBLIC_HEADERS}
+        ${CRATE_PRIVATE_HEADERS}
+        ${CRATE_THIRDPARTY_SOURCES}
+)
+
+# Required for shared library builds
+set_target_properties(crate_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_compile_features(crate_objects PUBLIC cxx_std_23)
+
+target_include_directories(crate_objects
+        PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+        PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${miniz_SOURCE_DIR}>
+)
+
+# Generate export header (needed before compiling objects)
+generate_export_header(crate_objects
+        BASE_NAME crate
+        EXPORT_FILE_NAME ${PROJECT_BINARY_DIR}/include/crate/crate_export.h
+)
+
+# For testing, we need to define the export macro as empty (static linking)
+target_compile_definitions(crate_objects PRIVATE CRATE_STATIC_DEFINE)
+
+# Miniz configuration - must match the defines in inflate.cc
+# Also disable warnings for third-party code
+set_source_files_properties(
+    ${miniz_SOURCE_DIR}/miniz.c
+    ${miniz_SOURCE_DIR}/miniz_tinfl.c
+    ${miniz_SOURCE_DIR}/miniz_tdef.c
+    PROPERTIES
+        COMPILE_DEFINITIONS "MINIZ_NO_STDIO;MINIZ_NO_TIME;MINIZ_NO_ARCHIVE_APIS;MINIZ_NO_ARCHIVE_WRITING_APIS;MINIZ_NO_ZLIB_COMPATIBLE_NAMES"
+        COMPILE_OPTIONS "-w"
+)
+
+neutrino_target_warnings(crate_objects)
+neutrino_target_sanitizers(crate_objects)
+
+# ============================================================================
+# Main library target (from objects)
+# ============================================================================
+
+neutrino_library_type(crate _lib_type)
+
+add_library(crate ${_lib_type} $<TARGET_OBJECTS:crate_objects>)
+add_library(neutrino::crate ALIAS crate)
+
+target_compile_features(crate PUBLIC cxx_std_23)
+
+target_include_directories(crate
+        PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+
+# ============================================================================
+# Optional libarchive support
+# ============================================================================
+
+if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
+    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_LIBARCHIVE)
+    target_compile_definitions(crate PUBLIC CRATE_WITH_LIBARCHIVE)
+
+    target_include_directories(crate_objects PRIVATE
+        $<BUILD_INTERFACE:${libarchive_SOURCE_DIR}/libarchive>
+        $<BUILD_INTERFACE:${libarchive_BINARY_DIR}>
+    )
+
+    target_link_libraries(crate PRIVATE archive)
+endif()
+
+# ============================================================================
+# Compiler Warnings
+# ============================================================================
+
+neutrino_target_warnings(crate)
+neutrino_target_sanitizers(crate)

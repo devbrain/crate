@@ -1,0 +1,72 @@
+#pragma once
+
+#include <filesystem>
+
+namespace test {
+
+// Centralized test data directory
+inline std::filesystem::path testdata_dir() {
+    return "@TESTDATA_DIR@";
+}
+
+// Format-specific subdirectories
+inline std::filesystem::path cab_dir() {
+    return testdata_dir() / "cab";
+}
+
+inline std::filesystem::path chm_dir() {
+    return testdata_dir() / "chm";
+}
+
+inline std::filesystem::path lha_dir() {
+    return testdata_dir() / "lha";
+}
+
+inline std::filesystem::path rar_dir() {
+    return testdata_dir() / "rar";
+}
+
+inline std::filesystem::path arj_dir() {
+    return testdata_dir() / "arj";
+}
+
+inline std::filesystem::path arc_dir() {
+    return testdata_dir() / "arc";
+}
+
+inline std::filesystem::path zoo_dir() {
+    return testdata_dir() / "zoo";
+}
+
+inline std::filesystem::path ha_dir() {
+    return testdata_dir() / "ha";
+}
+
+inline std::filesystem::path hyp_dir() {
+    return testdata_dir() / "hyp";
+}
+
+inline std::filesystem::path ace_dir() {
+    return testdata_dir() / "ace";
+}
+
+inline std::filesystem::path pkware_dir() {
+    return testdata_dir() / "pkware";
+}
+
+// Legacy compatibility - these map to new centralized structure
+// cab_test_dir() -> testdata/cab (was test-cab/cabs)
+// mspack_test_dir() -> testdata/cab/mspack (was test-mspack/test_files/cabd)
+inline std::filesystem::path cab_test_dir() {
+    return testdata_dir() / "cab";
+}
+
+inline std::filesystem::path mspack_test_dir() {
+    return testdata_dir() / "cab" / "mspack";
+}
+
+inline std::filesystem::path mspack_chm_test_dir() {
+    return testdata_dir() / "chm";
+}
+
+} // namespace test
