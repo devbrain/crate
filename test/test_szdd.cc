@@ -1,12 +1,26 @@
 #include <doctest/doctest.h>
-#include <crate/formats/szdd.hh>
+#include <crate/compression/szdd.hh>
 #include <crate/test_config.hh>
 #include <array>
 #include <vector>
 
 using namespace crate;
 
-TEST_SUITE("SzddExtractor") {
+// Helper to decompress SZDD data
+static result_t<byte_vector> decompress_szdd(byte_span data) {
+    auto header = szdd_decompressor::parse_header(data);
+    if (!header) return std::unexpected(header.error());
+
+    byte_vector output(header->uncompressed_size);
+    szdd_decompressor decompressor;
+    auto result = decompressor.decompress(data, output);
+    if (!result) return std::unexpected(result.error());
+
+    output.resize(*result);
+    return output;
+}
+
+TEST_SUITE("SzddDecompressor") {
     TEST_CASE("Parse SZDD header - standard") {
         std::array<u8, 14> data = {
             'S', 'Z', 'D', 'D', 0x88, 0xF0, 0x27, 0x33,  // Signature
@@ -15,7 +29,7 @@ TEST_SUITE("SzddExtractor") {
             0x00, 0x10, 0x00, 0x00  // Uncompressed size (4096)
         };
 
-        auto header = szdd_extractor::parse_header(data);
+        auto header = szdd_decompressor::parse_header(data);
         REQUIRE(header.has_value());
         CHECK(header->comp_method == 'A');
         CHECK(header->missing_char == 'E');
@@ -30,7 +44,7 @@ TEST_SUITE("SzddExtractor") {
             0, 0, 0  // Padding
         };
 
-        auto header = szdd_extractor::parse_header(data);
+        auto header = szdd_decompressor::parse_header(data);
         REQUIRE(header.has_value());
         CHECK(header->comp_method == 'A');
         CHECK(header->missing_char == '\0');
@@ -44,7 +58,7 @@ TEST_SUITE("SzddExtractor") {
             'A', 'E', 0x00, 0x10, 0x00, 0x00
         };
 
-        auto header = szdd_extractor::parse_header(data);
+        auto header = szdd_decompressor::parse_header(data);
         CHECK_FALSE(header.has_value());
         CHECK(header.error().code() == error_code::InvalidSignature);
     }
@@ -57,24 +71,24 @@ TEST_SUITE("SzddExtractor") {
             0x00, 0x10, 0x00, 0x00
         };
 
-        auto header = szdd_extractor::parse_header(data);
+        auto header = szdd_decompressor::parse_header(data);
         CHECK_FALSE(header.has_value());
         CHECK(header.error().code() == error_code::UnsupportedCompression);
     }
 
     TEST_CASE("Recover filename") {
-        CHECK(szdd_extractor::recover_filename("SETUP.EX_", 'E') == "SETUP.EXE");
-        CHECK(szdd_extractor::recover_filename("README.TX_", 'T') == "README.TXT");
-        CHECK(szdd_extractor::recover_filename("FOO.DL_", 'L') == "FOO.DLL");
-        CHECK(szdd_extractor::recover_filename("BAR.SY_", 'S') == "BAR.SYS");
+        CHECK(szdd_decompressor::recover_filename("SETUP.EX_", 'E') == "SETUP.EXE");
+        CHECK(szdd_decompressor::recover_filename("README.TX_", 'T') == "README.TXT");
+        CHECK(szdd_decompressor::recover_filename("FOO.DL_", 'L') == "FOO.DLL");
+        CHECK(szdd_decompressor::recover_filename("BAR.SY_", 'S') == "BAR.SYS");
     }
 
     TEST_CASE("Recover filename - no underscore") {
-        CHECK(szdd_extractor::recover_filename("NOUNDER.TXT", 'X') == "NOUNDER.TXT");
+        CHECK(szdd_decompressor::recover_filename("NOUNDER.TXT", 'X') == "NOUNDER.TXT");
     }
 
     TEST_CASE("Recover filename - null missing char") {
-        CHECK(szdd_extractor::recover_filename("FILE.EX_", '\0') == "FILE.EX_");
+        CHECK(szdd_decompressor::recover_filename("FILE.EX_", '\0') == "FILE.EX_");
     }
 
     TEST_CASE("Decompress simple SZDD data - all literals") {
@@ -88,7 +102,7 @@ TEST_SUITE("SzddExtractor") {
             'H', 'e', 'l', 'l', 'o', '!', '!', '!'
         };
 
-        auto result = szdd_extractor::extract(data);
+        auto result = decompress_szdd(data);
         REQUIRE(result.has_value());
         CHECK(result->size() == 8);
 
@@ -101,7 +115,7 @@ TEST_SUITE("SzddExtractor") {
             'S', 'Z', 'D', 'D', 0x88, 0xF0, 0x27, 0x33
         };
 
-        auto header = szdd_extractor::parse_header(data);
+        auto header = szdd_decompressor::parse_header(data);
         CHECK_FALSE(header.has_value());
         CHECK(header.error().code() == error_code::TruncatedArchive);
     }
@@ -113,7 +127,7 @@ TEST_SUITE("SzddExtractor") {
             0x10, 0x00, 0x00, 0x00  // Expects 16 bytes but none follow
         };
 
-        auto result = szdd_extractor::extract(data);
+        auto result = decompress_szdd(data);
         // Should succeed but with 0 bytes extracted
         REQUIRE(result.has_value());
         CHECK(result->size() == 0);

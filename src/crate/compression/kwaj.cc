@@ -1,10 +1,21 @@
-#include <crate/formats/kwaj.hh>
-#include <crate/compression/lzss.hh>
-#include <crate/compression/mszip.hh>
+#include <crate/compression/kwaj.hh>
+#include "crate/compression/lzss.hh"
+#include "crate/compression/mszip.hh"
 #include <cstring>
 
 namespace crate {
-    result_t <kwaj::header> kwaj_extractor::parse_header(byte_span data) {
+
+    struct kwaj_decompressor::impl {
+        szdd_lzss_decompressor szdd_lzss;
+        kwaj_lzss_decompressor kwaj_lzss;
+        mszip_decompressor mszip;
+    };
+
+    kwaj_decompressor::kwaj_decompressor() : pimpl_(std::make_unique<impl>()) {}
+
+    kwaj_decompressor::~kwaj_decompressor() = default;
+
+    result_t<kwaj::header> kwaj_decompressor::parse_header(byte_span data) {
         if (data.size() < 14) {
             return std::unexpected(error{error_code::TruncatedArchive});
         }
@@ -77,16 +88,14 @@ namespace crate {
                     "KWAJ filename exceeds 8 characters"
                 });
             }
-            header.filename = std::string(reinterpret_cast <const char*>(data.data() + name_start), name_len);
+            header.filename = std::string(reinterpret_cast<const char*>(data.data() + name_start), name_len);
             if (pos < data.size() && data[pos] == 0) {
                 pos++; // Skip null terminator
             }
         }
 
         if (header.flags & kwaj::HAS_EXTENSION) {
-            // Extension length calculation differs based on whether filename is present:
-            // - Extension only: data_offset points AFTER extension (ext_len = data_offset - pos)
-            // - With filename: data_offset points to LAST byte of extension (ext_len = data_offset - pos + 1)
+            // Extension length calculation differs based on whether filename is present
             size_t ext_len = 0;
             if (header.flags & kwaj::HAS_FILENAME) {
                 // With filename: data_offset is inclusive end of extension
@@ -107,7 +116,7 @@ namespace crate {
                         "KWAJ extension exceeds 3 characters"
                     });
                 }
-                header.extension = std::string(reinterpret_cast <const char*>(data.data() + pos), ext_len);
+                header.extension = std::string(reinterpret_cast<const char*>(data.data() + pos), ext_len);
                 pos += ext_len;
             }
         }
@@ -115,33 +124,55 @@ namespace crate {
         return header;
     }
 
-    result_t <byte_vector> kwaj_extractor::extract(byte_span data) {
-        auto header_result = parse_header(data);
+    result_t<size_t> kwaj_decompressor::decompress(byte_span input, mutable_byte_span output) {
+        auto header_result = parse_header(input);
         if (!header_result) return std::unexpected(header_result.error());
 
         const auto& header = *header_result;
 
-        if (header.data_offset >= data.size()) {
+        if (header.data_offset >= input.size()) {
             return std::unexpected(error{error_code::TruncatedArchive});
         }
 
-        byte_span compressed = data.subspan(header.data_offset);
+        byte_span compressed = input.subspan(header.data_offset);
+        size_t result_size = 0;
 
-        switch (static_cast <kwaj::method>(header.comp_method)) {
+        switch (static_cast<kwaj::method>(header.comp_method)) {
             case kwaj::NONE:
-                return byte_vector(compressed.begin(), compressed.end());
+                if (output.size() < compressed.size()) {
+                    return std::unexpected(error{error_code::OutputBufferOverflow});
+                }
+                std::memcpy(output.data(), compressed.data(), compressed.size());
+                result_size = compressed.size();
+                break;
 
-            case kwaj::XOR_FF:
-                return decompress_xor(compressed);
+            case kwaj::XOR_FF: {
+                auto result = decompress_xor(compressed, output);
+                if (!result) return std::unexpected(result.error());
+                result_size = *result;
+                break;
+            }
 
-            case kwaj::SZDD:
-                return decompress_szdd(compressed, header.decompressed_len);
+            case kwaj::SZDD: {
+                auto result = decompress_szdd(compressed, output, header.decompressed_len);
+                if (!result) return std::unexpected(result.error());
+                result_size = *result;
+                break;
+            }
 
-            case kwaj::LZH:
-                return decompress_lzh(compressed, header.decompressed_len);
+            case kwaj::LZH: {
+                auto result = decompress_lzh(compressed, output, header.decompressed_len);
+                if (!result) return std::unexpected(result.error());
+                result_size = *result;
+                break;
+            }
 
-            case kwaj::MSZIP:
-                return decompress_mszip(compressed, header.decompressed_len);
+            case kwaj::MSZIP: {
+                auto result = decompress_mszip(compressed, output, header.decompressed_len);
+                if (!result) return std::unexpected(result.error());
+                result_size = *result;
+                break;
+            }
 
             default:
                 return std::unexpected(error{
@@ -149,63 +180,37 @@ namespace crate {
                     "Unknown KWAJ compression method"
                 });
         }
+
+        report_progress(result_size, header.decompressed_len);
+        return result_size;
     }
 
-    result_t <byte_vector> kwaj_extractor::extract(const std::filesystem::path& path) {
-        auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
-
-        auto size = file->size();
-        if (!size) return std::unexpected(size.error());
-
-        byte_vector data(*size);
-        auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
-
-        return extract(data);
+    void kwaj_decompressor::reset() {
+        pimpl_->szdd_lzss.reset();
+        pimpl_->kwaj_lzss.reset();
+        pimpl_->mszip.reset();
     }
 
-    result_t <byte_vector> kwaj_extractor::decompress_xor(byte_span data) {
-        byte_vector result(data.size());
-        for (size_t i = 0; i < data.size(); i++) {
-            result[i] = data[i] ^ 0xFF;
+    result_t<size_t> kwaj_decompressor::decompress_xor(byte_span data, mutable_byte_span output) {
+        if (output.size() < data.size()) {
+            return std::unexpected(error{error_code::OutputBufferOverflow});
         }
-        return result;
+        for (size_t i = 0; i < data.size(); i++) {
+            output[i] = static_cast<byte>(data[i] ^ 0xFF);
+        }
+        return data.size();
     }
 
-    result_t <byte_vector> kwaj_extractor::decompress_szdd(byte_span data, u32 expected_size) {
-        szdd_lzss_decompressor decompressor;
-        size_t output_size = expected_size > 0 ? expected_size : 64 * 1024;
-        byte_vector output(output_size);
-
-        auto result = decompressor.decompress(data, output);
-        if (!result) return std::unexpected(result.error());
-
-        output.resize(*result);
-        return output;
+    result_t<size_t> kwaj_decompressor::decompress_szdd(byte_span data, mutable_byte_span output, u32 /*expected_size*/) {
+        return pimpl_->szdd_lzss.decompress(data, output);
     }
 
-    result_t <byte_vector> kwaj_extractor::decompress_lzh(byte_span data, u32 expected_size) {
-        kwaj_lzss_decompressor decompressor;
-        size_t output_size = expected_size > 0 ? expected_size : 64 * 1024;
-        byte_vector output(output_size);
-
-        auto result = decompressor.decompress(data, output);
-        if (!result) return std::unexpected(result.error());
-
-        output.resize(*result);
-        return output;
+    result_t<size_t> kwaj_decompressor::decompress_lzh(byte_span data, mutable_byte_span output, u32 /*expected_size*/) {
+        return pimpl_->kwaj_lzss.decompress(data, output);
     }
 
-    result_t <byte_vector> kwaj_extractor::decompress_mszip(byte_span data, u32 expected_size) {
-        mszip_decompressor decompressor;
-        size_t output_size = expected_size > 0 ? expected_size : 64 * 1024;
-        byte_vector output(output_size);
-
-        auto result = decompressor.decompress(data, output);
-        if (!result) return std::unexpected(result.error());
-
-        output.resize(*result);
-        return output;
+    result_t<size_t> kwaj_decompressor::decompress_mszip(byte_span data, mutable_byte_span output, u32 /*expected_size*/) {
+        return pimpl_->mszip.decompress(data, output);
     }
+
 } // namespace crate

@@ -1,10 +1,18 @@
-#include <crate/formats/szdd.hh>
-#include <crate/compression/lzss.hh>
+#include <crate/compression/szdd.hh>
+#include "crate/compression/lzss.hh"
 #include <cstring>
 
 namespace crate {
 
-    result_t <szdd::header> szdd_extractor::parse_header(byte_span data) {
+    struct szdd_decompressor::impl {
+        szdd_lzss_decompressor lzss;
+    };
+
+    szdd_decompressor::szdd_decompressor() : pimpl_(std::make_unique<impl>()) {}
+
+    szdd_decompressor::~szdd_decompressor() = default;
+
+    result_t<szdd::header> szdd_decompressor::parse_header(byte_span data) {
         szdd::header header{};
 
         if (data.size() < 14) {
@@ -15,7 +23,7 @@ namespace crate {
         if (std::memcmp(data.data(), szdd::SIGNATURE, 8) == 0) {
             header.is_qbasic = false;
             header.comp_method = data[8];
-            header.missing_char = static_cast <char>(data[9]);
+            header.missing_char = static_cast<char>(data[9]);
             header.uncompressed_size = read_u32_le(data.data() + 10);
         }
         // Check for QBasic variant
@@ -41,8 +49,8 @@ namespace crate {
         return header;
     }
 
-    result_t <byte_vector> szdd_extractor::extract(byte_span data) {
-        auto header_result = parse_header(data);
+    result_t<size_t> szdd_decompressor::decompress(byte_span input, mutable_byte_span output) {
+        auto header_result = parse_header(input);
         if (!header_result) return std::unexpected(header_result.error());
 
         const auto& header = *header_result;
@@ -50,42 +58,35 @@ namespace crate {
         // Calculate data offset
         size_t data_offset = header.is_qbasic ? 11 : 14;
 
-        if (data_offset >= data.size()) {
-            // No compressed data after header - return empty result
-            return byte_vector{};
+        if (data_offset >= input.size()) {
+            // No compressed data after header
+            report_progress(0, 0);
+            return 0;
         }
 
-        byte_span compressed = data.subspan(data_offset);
+        byte_span compressed = input.subspan(data_offset);
+
+        // Check output buffer size
+        if (output.size() < header.uncompressed_size) {
+            return std::unexpected(error{
+                error_code::OutputBufferOverflow,
+                "Output buffer too small for decompressed data"
+            });
+        }
 
         // Decompress using LZSS
-        szdd_lzss_decompressor decompressor;
-        byte_vector output(header.uncompressed_size);
-
-        auto result = decompressor.decompress(compressed, output);
+        auto result = pimpl_->lzss.decompress(compressed, output);
         if (!result) return std::unexpected(result.error());
 
-        if (*result != header.uncompressed_size) {
-            output.resize(*result);
-        }
-
-        return output;
+        report_progress(*result, header.uncompressed_size);
+        return *result;
     }
 
-    result_t <byte_vector> szdd_extractor::extract(const std::filesystem::path& path) {
-        auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
-
-        auto size = file->size();
-        if (!size) return std::unexpected(size.error());
-
-        byte_vector data(*size);
-        auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
-
-        return extract(data);
+    void szdd_decompressor::reset() {
+        pimpl_->lzss.reset();
     }
 
-    std::string szdd_extractor::recover_filename(std::string_view compressed_name, char missing_char) {
+    std::string szdd_decompressor::recover_filename(std::string_view compressed_name, char missing_char) {
         std::string result(compressed_name);
 
         // Find the underscore placeholder and replace with missing char
@@ -95,4 +96,5 @@ namespace crate {
 
         return result;
     }
+
 } // namespace crate

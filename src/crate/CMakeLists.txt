@@ -9,6 +9,7 @@ set(CRATE_SOURCES
         compression/diet.cc
         compression/explode.cc
         compression/inflate.cc
+        compression/kwaj.cc
         compression/lzh.cc
         compression/lzss.cc
         compression/lzx.cc
@@ -17,6 +18,7 @@ set(CRATE_SOURCES
         compression/rar_filters.cc
         compression/rar_ppm.cc
         compression/rar_unpack.cc
+        compression/szdd.cc
         core/bitstream.cc
         core/crc.cc
         core/error.cc
@@ -36,11 +38,9 @@ set(CRATE_SOURCES
         formats/chm.cc
         formats/ha.cc
         formats/hyp.cc
-        formats/kwaj.cc
         formats/lha.cc
         formats/rar.cc
         formats/stuffit.cc
-        formats/szdd.cc
         formats/zip.cc
         formats/zoo.cc
         vfs/vfs.cc
@@ -51,6 +51,8 @@ set(CRATE_PUBLIC_HEADERS
         ${PROJECT_SOURCE_DIR}/include/crate/compression/diet.hh
         ${PROJECT_SOURCE_DIR}/include/crate/compression/explode.hh
         ${PROJECT_SOURCE_DIR}/include/crate/compression/inflate.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/kwaj.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/szdd.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/decompressor.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/vfs.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/error.hh
@@ -64,11 +66,9 @@ set(CRATE_PUBLIC_HEADERS
         ${PROJECT_SOURCE_DIR}/include/crate/formats/chm.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/ha.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/hyp.hh
-        ${PROJECT_SOURCE_DIR}/include/crate/formats/kwaj.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/lha.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/rar.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/stuffit.hh
-        ${PROJECT_SOURCE_DIR}/include/crate/formats/szdd.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/zip.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/zoo.hh
 )

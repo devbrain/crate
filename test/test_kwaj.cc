@@ -1,12 +1,30 @@
 #include <doctest/doctest.h>
-#include <crate/formats/kwaj.hh>
+#include <crate/compression/kwaj.hh>
 #include <crate/test_config.hh>
 #include <array>
 #include <vector>
 
 using namespace crate;
 
-TEST_SUITE("KwajExtractor - Basic") {
+// Helper to decompress KWAJ data
+static result_t<byte_vector> decompress_kwaj(byte_span data) {
+    auto header = kwaj_decompressor::parse_header(data);
+    if (!header) return std::unexpected(header.error());
+
+    // Estimate output size - use decompressed_len if available, otherwise use a reasonable default
+    size_t output_size = header->decompressed_len > 0 ? header->decompressed_len : data.size() * 10;
+    if (output_size == 0) output_size = data.size();
+
+    byte_vector output(output_size);
+    kwaj_decompressor decompressor;
+    auto result = decompressor.decompress(data, output);
+    if (!result) return std::unexpected(result.error());
+
+    output.resize(*result);
+    return output;
+}
+
+TEST_SUITE("KwajDecompressor - Basic") {
     TEST_CASE("Parse KWAJ header - basic") {
         std::array<u8, 14> data = {
             'K', 'W', 'A', 'J',
@@ -16,7 +34,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             0x00, 0x00   // Flags: none
         };
 
-        auto header = kwaj_extractor::parse_header(data);
+        auto header = kwaj_decompressor::parse_header(data);
         REQUIRE(header.has_value());
         CHECK(header->comp_method == 0);
         CHECK(header->data_offset == 14);
@@ -38,7 +56,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             'T', 'E', 'S', 'T', 0x00
         };
 
-        auto header = kwaj_extractor::parse_header(data);
+        auto header = kwaj_decompressor::parse_header(data);
         REQUIRE(header.has_value());
         CHECK(header->comp_method == 0);
         CHECK(header->uncompressed_len == 4096);
@@ -53,7 +71,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             0x00, 0x00, 0x0E, 0x00, 0x00, 0x00
         };
 
-        auto header = kwaj_extractor::parse_header(data);
+        auto header = kwaj_decompressor::parse_header(data);
         CHECK_FALSE(header.has_value());
         CHECK(header.error().code() == error_code::InvalidSignature);
     }
@@ -65,7 +83,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             0x00, 0x00, 0x0E, 0x00, 0x00, 0x00
         };
 
-        auto header = kwaj_extractor::parse_header(data);
+        auto header = kwaj_decompressor::parse_header(data);
         CHECK_FALSE(header.has_value());
         CHECK(header.error().code() == error_code::InvalidSignature);
     }
@@ -80,7 +98,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             'T', 'E', 'S', 'T'  // Uncompressed data
         };
 
-        auto result = kwaj_extractor::extract(data);
+        auto result = decompress_kwaj(data);
         REQUIRE(result.has_value());
         CHECK(result->size() == 4);
 
@@ -101,7 +119,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             static_cast<u8>('T' ^ 0xFF)
         };
 
-        auto result = kwaj_extractor::extract(data);
+        auto result = decompress_kwaj(data);
         REQUIRE(result.has_value());
         CHECK(result->size() == 4);
 
@@ -115,7 +133,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             0x88, 0xF0, 0x27, 0x33
         };
 
-        auto header = kwaj_extractor::parse_header(data);
+        auto header = kwaj_decompressor::parse_header(data);
         CHECK_FALSE(header.has_value());
         CHECK(header.error().code() == error_code::TruncatedArchive);
     }
@@ -129,7 +147,7 @@ TEST_SUITE("KwajExtractor - Basic") {
             0x00, 0x00
         };
 
-        auto result = kwaj_extractor::extract(data);
+        auto result = decompress_kwaj(data);
         CHECK_FALSE(result.has_value());
         CHECK(result.error().code() == error_code::TruncatedArchive);
     }
@@ -150,7 +168,7 @@ static result_t<byte_vector> load_kwaj_file(const std::filesystem::path& path) {
     return data;
 }
 
-TEST_SUITE("KwajExtractor - Ground Truth Tests") {
+TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     // Ground truth from kwajd_test.c:
     // fXY.kwj where X = filename length (0-8), Y = extension variation
     // Y=0: no extension, Y=1: ".1", Y=2: ".12", Y=3: ".123", Y=4: should FAIL
@@ -163,7 +181,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename.empty());
         CHECK(header->extension.empty());
@@ -176,7 +194,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->extension == "1");
     }
@@ -188,7 +206,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->extension == "12");
     }
@@ -200,7 +218,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->extension == "123");
     }
@@ -212,7 +230,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename == "1");
         CHECK(header->extension.empty());
@@ -225,7 +243,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename == "1");
         CHECK(header->extension == "1");
@@ -238,7 +256,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename == "12");
     }
@@ -250,7 +268,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename == "12");
         CHECK(header->extension == "1");
@@ -263,7 +281,7 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename == "12345678");
     }
@@ -275,14 +293,14 @@ TEST_SUITE("KwajExtractor - Ground Truth Tests") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         REQUIRE(header.has_value());
         CHECK(header->filename == "12345678");
         CHECK(header->extension == "123");
     }
 }
 
-TEST_SUITE("KwajExtractor - Files That Should Fail") {
+TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     // According to kwajd_test.c, these files should fail with DATAFORMAT error:
     // - f04, f14, f24, f34, f44, f54, f64, f74, f84 (Y=4)
     // - f90, f91, f92, f93, f94 (X=9)
@@ -295,7 +313,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -306,7 +324,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -317,7 +335,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -328,7 +346,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -339,7 +357,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -350,7 +368,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -361,7 +379,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -372,7 +390,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -383,7 +401,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -394,7 +412,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -405,7 +423,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -416,7 +434,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -427,7 +445,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -438,7 +456,7 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         auto data = load_kwaj_file(path);
         REQUIRE(data.has_value());
 
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 
@@ -450,12 +468,12 @@ TEST_SUITE("KwajExtractor - Files That Should Fail") {
         REQUIRE(data.has_value());
 
         // Should fail to parse - this is a malformed file
-        auto header = kwaj_extractor::parse_header(*data);
+        auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
     }
 }
 
-TEST_SUITE("KwajExtractor - Valid Files Comprehensive") {
+TEST_SUITE("KwajDecompressor - Valid Files Comprehensive") {
     // Test all valid fXY files (where Y != 4 and X != 9)
     TEST_CASE("All valid KWAJ files parse and extract correctly") {
         // Expected filenames based on ground truth
@@ -487,7 +505,7 @@ TEST_SUITE("KwajExtractor - Valid Files Comprehensive") {
                 auto data = load_kwaj_file(path);
                 REQUIRE_MESSAGE(data.has_value(), "Failed to load " << filename);
 
-                auto header = kwaj_extractor::parse_header(*data);
+                auto header = kwaj_decompressor::parse_header(*data);
                 REQUIRE_MESSAGE(header.has_value(), "Failed to parse header for " << filename);
 
                 // Check filename if X > 0
@@ -505,7 +523,7 @@ TEST_SUITE("KwajExtractor - Valid Files Comprehensive") {
                 }
 
                 // Verify extraction works
-                auto result = kwaj_extractor::extract(*data);
+                auto result = decompress_kwaj(*data);
                 CHECK_MESSAGE(result.has_value(), "Failed to extract " << filename);
             }
         }
