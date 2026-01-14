@@ -26,8 +26,10 @@ add_executable(crate_tests
     test_explode.cc
     test_main.cc
     test_mszip.cc
+    test_progress.cc
     test_rar.cc
     test_rar_corpus.cc
+    test_stuffit.cc
     test_szdd.cc
     test_vfs.cc
     test_zoo.cc

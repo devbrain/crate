@@ -54,6 +54,10 @@ inline std::filesystem::path pkware_dir() {
     return testdata_dir() / "pkware";
 }
 
+inline std::filesystem::path stuffit_dir() {
+    return testdata_dir() / "stuffit";
+}
+
 // Legacy compatibility - these map to new centralized structure
 // cab_test_dir() -> testdata/cab (was test-cab/cabs)
 // mspack_test_dir() -> testdata/cab/mspack (was test-mspack/test_files/cabd)

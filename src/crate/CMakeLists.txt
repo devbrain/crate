@@ -39,6 +39,7 @@ set(CRATE_SOURCES
         formats/kwaj.cc
         formats/lha.cc
         formats/rar.cc
+        formats/stuffit.cc
         formats/szdd.cc
         formats/zip.cc
         formats/zoo.cc
@@ -66,6 +67,7 @@ set(CRATE_PUBLIC_HEADERS
         ${PROJECT_SOURCE_DIR}/include/crate/formats/kwaj.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/lha.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/rar.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/stuffit.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/szdd.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/zip.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/zoo.hh
