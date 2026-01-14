@@ -114,6 +114,10 @@ namespace crate {
         std::copy_n(folder_data->begin() + static_cast <std::ptrdiff_t>(entry.folder_offset),
                     entry.uncompressed_size, result.begin());
 
+        if (byte_progress_cb_) {
+            byte_progress_cb_(entry, result.size(), result.size());
+        }
+
         return result;
     }
 

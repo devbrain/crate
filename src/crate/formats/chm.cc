@@ -103,6 +103,9 @@ namespace crate {
                         m_pimpl->data_.begin() + static_cast <std::ptrdiff_t>(
                             m_pimpl->itsf_.section0_offset + ie.offset),
                         ie.length, result.begin());
+                    if (byte_progress_cb_) {
+                        byte_progress_cb_(entry, result.size(), result.size());
+                    }
                     return result;
                 } else {
                     // Compressed section - requires full LZX decompression

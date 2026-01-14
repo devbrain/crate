@@ -1325,6 +1325,11 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
         return std::unexpected(error{error_code::InvalidChecksum, "LHA CRC-16 mismatch"});
     }
 
+    // Report byte-level progress
+    if (byte_progress_cb_) {
+        byte_progress_cb_(entry, output->size(), output->size());
+    }
+
     return output;
 }
 

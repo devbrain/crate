@@ -351,6 +351,10 @@ result_t<byte_vector> zip_archive::extract(const file_entry& entry) {
         return std::unexpected(error{error_code::InvalidChecksum, "ZIP CRC32 mismatch"});
     }
 
+    if (byte_progress_cb_) {
+        byte_progress_cb_(entry, output.size(), output.size());
+    }
+
     return output;
 }
 

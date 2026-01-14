@@ -1400,6 +1400,11 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
     // Cache the result for potential hard link references
     pimpl_->extracted_cache_[member.filename] = output;
 
+    // Report byte-level progress
+    if (byte_progress_cb_) {
+        byte_progress_cb_(entry, output.size(), output.size());
+    }
+
     return output;
 }
 void_result_t rar_archive::extract(const file_entry& entry, const std::filesystem::path& dest) {

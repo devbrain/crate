@@ -235,6 +235,9 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                     return std::unexpected(error{error_code::CorruptData, "Failed to read entry data"});
                 }
                 archive_read_free(a);
+                if (byte_progress_cb_) {
+                    byte_progress_cb_(entry, output.size(), output.size());
+                }
                 return output;
             } else {
                 byte_vector output(static_cast<size_t>(size));
@@ -246,6 +249,9 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                 }
                 if (static_cast<size_t>(bytes_read) != output.size()) {
                     output.resize(static_cast<size_t>(bytes_read));
+                }
+                if (byte_progress_cb_) {
+                    byte_progress_cb_(entry, output.size(), output.size());
                 }
                 return output;
             }

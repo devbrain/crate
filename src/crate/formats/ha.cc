@@ -1280,6 +1280,11 @@ namespace crate {
             return std::unexpected(error{error_code::InvalidChecksum, "CRC-32 mismatch"});
         }
 
+        // Report byte-level progress
+        if (byte_progress_cb_) {
+            byte_progress_cb_(entry, output.size(), output.size());
+        }
+
         return output;
     }
 

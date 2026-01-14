@@ -49,6 +49,9 @@ result_t<size_t> inflate_decompressor::decompress(byte_span input, mutable_byte_
         return std::unexpected(error{error_code::CorruptData, "DEFLATE decompression failed"});
     }
 
+    // Report progress at completion
+    report_progress(out_bytes, out_bytes);
+
     return out_bytes;
 }
 
@@ -105,7 +108,10 @@ result_t<size_t> zlib_decompressor::decompress(byte_span input, mutable_byte_spa
         return std::unexpected(error{error_code::CorruptData, "zlib decompression failed"});
     }
 
-    return pimpl_->stream.total_out;
+    size_t out_bytes = pimpl_->stream.total_out;
+    report_progress(out_bytes, out_bytes);
+
+    return out_bytes;
 }
 
 void zlib_decompressor::reset() {
@@ -162,7 +168,10 @@ result_t<size_t> gzip_decompressor::decompress(byte_span input, mutable_byte_spa
         return std::unexpected(error{error_code::CorruptData, "gzip decompression failed"});
     }
 
-    return pimpl_->stream.total_out;
+    size_t out_bytes = pimpl_->stream.total_out;
+    report_progress(out_bytes, out_bytes);
+
+    return out_bytes;
 }
 
 void gzip_decompressor::reset() {
