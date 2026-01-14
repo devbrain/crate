@@ -4,6 +4,7 @@
 
 #include <crate/formats/stuffit.hh>
 #include <crate/core/crc.hh>
+#include <crate/compression/inflate.hh>
 #include <cstring>
 #include <algorithm>
 #include <memory>
@@ -193,6 +194,76 @@ namespace crate {
                         add_code(c, len, static_cast <int>(i));
                     }
                 }
+            }
+
+            // Initialize from explicit codes and lengths (for meta-code)
+            void init_from_explicit_codes(const int* codes, const int* lengths, size_t num_symbols) {
+                num_symbols_ = num_symbols;
+                next_free_ = 2;
+                std::fill(tree_.begin(), tree_.end(), 0);
+
+                for (size_t i = 0; i < num_symbols; i++) {
+                    if (lengths[i] > 0) {
+                        add_code(static_cast<u32>(codes[i]), lengths[i], static_cast<int>(i));
+                    }
+                }
+            }
+
+            // Parse dynamic Huffman code lengths using meta-code
+            // Algorithm from XADMaster/XADStuffIt13Handle.m
+            bool parse_dynamic_code(bit_reader& br, const huffman_table& meta_code, size_t num_codes) {
+                std::vector<int> lengths(num_codes, 0);
+                int length = 0;
+
+                // The loop iterates through symbols, incrementing i at end of each iteration
+                // But repeat/conditional cases may increment i multiple times
+                for (size_t i = 0; i < num_codes; i++) {
+                    int val = meta_code.decode_le(br);
+                    if (val < 0) return false;
+
+                    switch (val) {
+                        case 31:  // Set length to -1 (invalid/unused)
+                            length = -1;
+                            break;
+                        case 32:  // Increment length
+                            length++;
+                            break;
+                        case 33:  // Decrement length
+                            length--;
+                            break;
+                        case 34:  // Conditional: if next bit is 1, set current symbol and advance
+                            if (br.read_bits_le(1)) {
+                                if (i < num_codes) lengths[i++] = length;
+                            }
+                            break;
+                        case 35: { // Repeat 2-9 times
+                            int repeat = static_cast<int>(br.read_bits_le(3)) + 2;
+                            while (repeat-- > 0 && i < num_codes) {
+                                lengths[i++] = length;
+                            }
+                            break;
+                        }
+                        case 36: { // Repeat 10-73 times
+                            int repeat = static_cast<int>(br.read_bits_le(6)) + 10;
+                            while (repeat-- > 0 && i < num_codes) {
+                                lengths[i++] = length;
+                            }
+                            break;
+                        }
+                        default:  // 0-30: Set length = val + 1
+                            length = val + 1;
+                            break;
+                    }
+                    // After processing, set current symbol to current length
+                    // (unless we've already gone past the end)
+                    if (i < num_codes) {
+                        lengths[i] = length;
+                    }
+                }
+
+                // Build the Huffman tree from parsed lengths
+                init_from_lengths(lengths.data(), num_codes, true);
+                return true;
             }
 
             int decode_le(bit_reader& br) const {
@@ -597,28 +668,54 @@ namespace crate {
             u8 val = br.read_byte();
             int code_type = val >> 4;
 
-            if (code_type == 0 || code_type >= 6) {
-                // Dynamic tables or unsupported - fall back to simple approach
-                // For now, just return an error for truly dynamic tables
-                if (code_type == 0) {
+            huffman_table first_code, second_code, offset_code;
+
+            if (code_type == 0) {
+                // Dynamic tables - parse Huffman codes using meta-code
+                huffman_table meta_code;
+                meta_code.init_from_explicit_codes(MetaCodes, MetaCodeLengths, 37);
+
+                // Parse first code (321 symbols for literal/length)
+                if (!first_code.parse_dynamic_code(br, meta_code, 321)) {
                     return std::unexpected(error{
-                        error_code::UnsupportedCompression,
-                        "Method 13 dynamic tables not yet supported"
+                        error_code::CorruptData,
+                        "Failed to parse method 13 dynamic first code"
                     });
                 }
+
+                // Parse second code - either same as first (val & 0x08) or parse new
+                if (val & 0x08) {
+                    // Reuse first code as second code
+                    second_code = first_code;
+                } else {
+                    if (!second_code.parse_dynamic_code(br, meta_code, 321)) {
+                        return std::unexpected(error{
+                            error_code::CorruptData,
+                            "Failed to parse method 13 dynamic second code"
+                        });
+                    }
+                }
+
+                // Parse offset code with (val & 0x07) + 10 symbols
+                size_t offset_size = static_cast<size_t>((val & 0x07) + 10);
+                if (!offset_code.parse_dynamic_code(br, meta_code, offset_size)) {
+                    return std::unexpected(error{
+                        error_code::CorruptData,
+                        "Failed to parse method 13 dynamic offset code"
+                    });
+                }
+            } else if (code_type >= 1 && code_type <= 5) {
+                // Use predefined tables
+                size_t table_idx = static_cast<size_t>(code_type - 1);
+                first_code.init_from_lengths(FirstCodeLengths[table_idx], 321, true);
+                second_code.init_from_lengths(SecondCodeLengths[table_idx], 321, true);
+                offset_code.init_from_lengths(OffsetCodeLengths[table_idx], static_cast<size_t>(OffsetCodeSize[table_idx]), true);
+            } else {
                 return std::unexpected(error{
                     error_code::CorruptData,
                     "Invalid method 13 code type"
                 });
             }
-
-            // Use predefined tables
-            size_t table_idx = static_cast <size_t>(code_type - 1);
-
-            huffman_table first_code, second_code, offset_code;
-            first_code.init_from_lengths(FirstCodeLengths[table_idx], 321, true);
-            second_code.init_from_lengths(SecondCodeLengths[table_idx], 321, true);
-            offset_code.init_from_lengths(OffsetCodeLengths[table_idx], static_cast <size_t>(OffsetCodeSize[table_idx]), true);
 
             // LZSS window
             constexpr size_t WINDOW_SIZE = 65536;
@@ -875,6 +972,216 @@ namespace crate {
             for (size_t i = 0; i < num_bytes; i++) {
                 transform[count[block[i]]++] = static_cast <u32>(i);
             }
+        }
+
+        // ============================================================
+        // Method 2: LZW compression
+        // Based on Unix compress / StuffIt LZW implementation
+        // ============================================================
+
+        // LZW constants for StuffIt (14-bit variant)
+        constexpr int LZW_MAX_BITS = 14;
+        constexpr int LZW_INIT_BITS = 9;
+        constexpr int LZW_FIRST = 257;  // First free entry
+        constexpr int LZW_CLEAR = 256;  // Table clear code
+        constexpr size_t LZW_HSIZE = 18013;  // Hash table size for 14 bits
+
+        class lzw_decoder {
+        public:
+            lzw_decoder() {
+                // Initialize suffix table with identity for first 256 entries
+                for (int i = 0; i < 256; i++) {
+                    tab_suffix_[i] = static_cast<u8>(i);
+                    tab_prefix_[i] = 0;
+                }
+            }
+
+            result_t<size_t> decompress(byte_span input, mutable_byte_span output) {
+                if (input.empty()) {
+                    return 0;
+                }
+
+                // StuffIt archives store LZW data WITHOUT the 3-byte Unix compress header.
+                // The sit tool uses 14-bit LZW with block compression enabled.
+                // Parameters are fixed: max_bits=14, block_compress=true
+                constexpr int max_bits = LZW_MAX_BITS;  // 14
+                constexpr bool block_compress = true;
+
+                max_maxcode_ = 1 << max_bits;
+                block_compress_ = block_compress;
+                n_bits_ = LZW_INIT_BITS;
+                maxcode_ = (1 << n_bits_) - 1;
+                free_ent_ = block_compress ? LZW_FIRST : 256;
+                clear_flg_ = false;
+
+                // No header to skip - data starts immediately
+                in_pos_ = 0;
+                in_data_ = input.data();
+                in_size_ = input.size();
+                bit_offset_ = 0;
+                bits_in_buffer_ = 0;
+
+                byte* out = output.data();
+                byte* out_end = output.data() + output.size();
+
+                // Get first code
+                int oldcode = get_code(max_bits);
+                if (oldcode < 0) {
+                    return 0;  // Empty stream
+                }
+
+                int finchar = oldcode;
+                if (out < out_end) {
+                    *out++ = static_cast<byte>(finchar);
+                }
+
+                int code;
+                while ((code = get_code(max_bits)) >= 0) {
+                    // Handle CLEAR code
+                    if (code == LZW_CLEAR && block_compress_) {
+                        // Reset table
+                        for (int i = 0; i < 256; i++) {
+                            tab_prefix_[i] = 0;
+                        }
+                        clear_flg_ = true;
+                        free_ent_ = LZW_FIRST;
+                        oldcode = -1;
+                        continue;
+                    }
+
+                    int incode = code;
+
+                    // Special case for KwKwK string
+                    if (code >= free_ent_) {
+                        if (code > free_ent_ || oldcode < 0) {
+                            return std::unexpected(error{error_code::CorruptData, "Bad LZW code"});
+                        }
+                        stack_[stack_ptr_++] = static_cast<u8>(finchar);
+                        code = oldcode;
+                    }
+
+                    // Walk the chain to build output
+                    while (code >= 256) {
+                        if (stack_ptr_ >= sizeof(stack_)) {
+                            return std::unexpected(error{error_code::CorruptData, "LZW stack overflow"});
+                        }
+                        stack_[stack_ptr_++] = tab_suffix_[code];
+                        code = tab_prefix_[code];
+                    }
+                    finchar = tab_suffix_[code];
+                    stack_[stack_ptr_++] = static_cast<u8>(finchar);
+
+                    // Output in forward order
+                    while (stack_ptr_ > 0 && out < out_end) {
+                        *out++ = stack_[--stack_ptr_];
+                    }
+                    stack_ptr_ = 0;
+
+                    // Add new entry to table
+                    if (free_ent_ < max_maxcode_ && oldcode >= 0) {
+                        tab_prefix_[free_ent_] = static_cast<u16>(oldcode);
+                        tab_suffix_[free_ent_] = static_cast<u8>(finchar);
+                        free_ent_++;
+                    }
+
+                    oldcode = incode;
+                }
+
+                return static_cast<size_t>(out - output.data());
+            }
+
+        private:
+            int get_code(int max_bits) {
+                // Handle code size increase
+                if (clear_flg_ || free_ent_ > maxcode_) {
+                    if (free_ent_ > maxcode_) {
+                        n_bits_++;
+                        if (n_bits_ == max_bits) {
+                            maxcode_ = max_maxcode_;
+                        } else {
+                            maxcode_ = (1 << n_bits_) - 1;
+                        }
+                    }
+                    if (clear_flg_) {
+                        n_bits_ = LZW_INIT_BITS;
+                        maxcode_ = (1 << n_bits_) - 1;
+                        clear_flg_ = false;
+                    }
+                    // Need to refill buffer when bit size changes
+                    bit_offset_ = 0;
+                    bits_in_buffer_ = 0;
+                }
+
+                // Read n_bits_ from stream using LSB-first bit packing
+                // The codes are packed in n_bits-byte groups
+
+                // If we've exhausted the current group, read a new one
+                if (bit_offset_ >= bits_in_buffer_) {
+                    // Read n_bits_ bytes into buffer
+                    size_t bytes_to_read = static_cast<size_t>(n_bits_);
+                    if (in_pos_ + bytes_to_read > in_size_) {
+                        bytes_to_read = in_size_ - in_pos_;
+                    }
+                    if (bytes_to_read == 0) {
+                        return -1;
+                    }
+                    std::memcpy(gbuf_, in_data_ + in_pos_, bytes_to_read);
+                    in_pos_ += bytes_to_read;
+                    bit_offset_ = 0;
+                    // Round down to integral number of codes
+                    bits_in_buffer_ = static_cast<int>((bytes_to_read << 3) - (static_cast<size_t>(n_bits_) - 1));
+                }
+
+                // Extract code from buffer
+                int r_off = bit_offset_;
+                const u8* bp = gbuf_ + (r_off >> 3);
+                r_off &= 7;
+
+                // Get first part (low order bits)
+                int gcode = (*bp++ >> r_off);
+                int bits = n_bits_ - (8 - r_off);
+
+                // Get middle 8-bit parts
+                if (bits >= 8) {
+                    gcode |= (*bp++ << (8 - r_off));
+                    bits -= 8;
+                }
+
+                // Get high order bits
+                if (bits > 0) {
+                    gcode |= (*bp & ((1 << bits) - 1)) << (n_bits_ - bits);
+                }
+
+                bit_offset_ += n_bits_;
+                return gcode & ((1 << n_bits_) - 1);
+            }
+
+            // LZW tables
+            u16 tab_prefix_[1 << LZW_MAX_BITS];
+            u8 tab_suffix_[1 << LZW_MAX_BITS];
+            u8 stack_[1 << LZW_MAX_BITS];
+            size_t stack_ptr_ = 0;
+
+            // Decoding state
+            int n_bits_ = LZW_INIT_BITS;
+            int maxcode_ = 0;
+            int max_maxcode_ = 0;
+            int free_ent_ = LZW_FIRST;
+            bool block_compress_ = false;
+            bool clear_flg_ = false;
+
+            // Input state
+            const byte* in_data_ = nullptr;
+            size_t in_pos_ = 0;
+            size_t in_size_ = 0;
+            u8 gbuf_[LZW_MAX_BITS];
+            int bit_offset_ = 0;
+            int bits_in_buffer_ = 0;
+        };
+
+        result_t<size_t> decompress_lzw(byte_span input, mutable_byte_span output) {
+            lzw_decoder decoder;
+            return decoder.decompress(input, output);
         }
 
         result_t <size_t> decompress_arsenic(byte_span input, mutable_byte_span output) {
@@ -1474,11 +1781,29 @@ namespace crate {
                 break;
             }
 
-            case stuffit::compression_method::lzw:
+            case stuffit::compression_method::lzw: {
+                auto result = decompress_lzw(compressed, output);
+                if (!result) return std::unexpected(result.error());
+                if (*result != fork.uncompressed_size) {
+                    output.resize(*result);
+                }
+                break;
+            }
+
+            case stuffit::compression_method::deflate: {
+                // Method 14 in v5 format uses raw Deflate (RFC 1951)
+                inflate_decompressor inflater;
+                auto result = inflater.decompress(compressed, output);
+                if (!result) return std::unexpected(result.error());
+                if (*result != fork.uncompressed_size) {
+                    output.resize(*result);
+                }
+                break;
+            }
+
             case stuffit::compression_method::lzah:
             case stuffit::compression_method::fixed_huffman:
             case stuffit::compression_method::mw:
-            case stuffit::compression_method::installer:
                 return std::unexpected(error{
                     error_code::UnsupportedCompression,
                     "Compression method not yet implemented"

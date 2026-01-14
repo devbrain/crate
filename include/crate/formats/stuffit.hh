@@ -13,9 +13,9 @@ namespace crate {
             lzah = 5, // LZAH (LHA -lh1-)
             fixed_huffman = 6, // Fixed Huffman + PackBits
             mw = 8, // MW (not supported)
-            lz_huffman = 13, // LZ+Huffman (not supported)
-            installer = 14, // Installer (not supported)
-            arsenic = 15, // Arsenic (not supported)
+            lz_huffman = 13, // LZ+Huffman
+            deflate = 14, // Deflate (v5 format)
+            arsenic = 15, // Arsenic (BWT)
         };
 
         // StuffIt format version
