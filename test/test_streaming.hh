@@ -204,7 +204,7 @@ generate_lzss_with_matches(size_t literal_blocks, size_t match_blocks) {
     for (size_t block = 0; block < literal_blocks; block++) {
         compressed.push_back(0xFF);  // All 8 bits are literals
         for (int i = 0; i < 8; i++) {
-            u8 val = 'A' + ((expected.size()) % 26);
+            u8 val = static_cast<u8>('A' + (expected.size() % 26));
             compressed.push_back(val);
             expected.push_back(val);
         }
@@ -221,13 +221,12 @@ generate_lzss_with_matches(size_t literal_blocks, size_t match_blocks) {
 
             for (int i = 0; i < 8; i++) {
                 // Match encoding: lo = pos & 0xFF, hi = ((pos >> 4) & 0xF0) | (len - 3)
-                u8 lo = match_src & 0xFF;
+                u8 lo = static_cast<u8>(match_src & 0xFF);
                 u8 hi = static_cast<u8>(((match_src >> 4) & 0xF0) | ((match_len - 3) & 0x0F));
                 compressed.push_back(lo);
                 compressed.push_back(hi);
 
                 // Add expected output - copy first 3 bytes of our literals
-                size_t src_offset = (expected.size() - literal_blocks * 8) % (literal_blocks * 8);
                 for (u8 j = 0; j < match_len; j++) {
                     expected.push_back(expected[j % (literal_blocks * 8)]);
                 }

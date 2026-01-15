@@ -109,21 +109,10 @@ bool mszip_decompressor::try_decode(const byte*& ptr, const byte* end,
         return false;
     }
 
-    // Create a temporary bitstream view for the decoder
-    // We'll use peek/remove pattern
-    u32 peek_bits = static_cast<u32>(bit_buffer_ & ((1ULL << std::min(bits_left_, MAX_BITS)) - 1));
-
-    // Look up in the Huffman table (table size is 1024 = 2^10)
-    constexpr unsigned TABLE_BITS = 10;
-    u32 idx = peek_bits & ((1u << TABLE_BITS) - 1);
-
-    // We need access to the decoder's internal table - this is a limitation
-    // For now, we'll create a temporary lsb_bitstream from our bit buffer
-
-    // Actually, let's use a simpler approach: create a small buffer from our bits
+    // Create a small buffer from our bits for the decoder
     std::array<byte, 8> temp_buf{};
     u64 temp_bits = bit_buffer_;
-    for (int i = 0; i < 8 && i * 8 < static_cast<int>(bits_left_); i++) {
+    for (size_t i = 0; i < 8 && i * 8 < bits_left_; i++) {
         temp_buf[i] = static_cast<byte>(temp_bits & 0xFF);
         temp_bits >>= 8;
     }

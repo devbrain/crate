@@ -64,7 +64,7 @@ TEST_SUITE("DietDecompressor") {
 
         size_t progress_calls = 0;
         size_t last_written = 0;
-        decompressor.set_progress_callback([&](size_t written, size_t total) {
+        decompressor.set_progress_callback([&](size_t written, size_t /*total*/) {
             CHECK(written >= last_written);  // Progress should not go backward
             last_written = written;
             progress_calls++;

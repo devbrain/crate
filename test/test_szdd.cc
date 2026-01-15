@@ -298,7 +298,7 @@ TEST_SUITE("SzddFullStreaming") {
         std::vector<u8> expected = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'};
 
         // Test various chunk sizes
-        for (size_t chunk_size : {1, 2, 3, 5, 7, 10, 14, 15, 20}) {
+        for (size_t chunk_size : {1uz, 2uz, 3uz, 5uz, 7uz, 10uz, 14uz, 15uz, 20uz}) {
             CAPTURE(chunk_size);
             szdd_decompressor dec;
             byte_vector output(expected.size() + 16);
@@ -333,7 +333,7 @@ TEST_SUITE("SzddFullStreaming") {
         std::vector<u8> expected = {'Q', 'B', 'A', 'S', 'I', 'C', '!', '!'};
 
         // Test various chunk sizes including split across header
-        for (size_t chunk_size : {1, 2, 3, 5, 7, 11, 12, 15}) {
+        for (size_t chunk_size : {1uz, 2uz, 3uz, 5uz, 7uz, 11uz, 12uz, 15uz}) {
             CAPTURE(chunk_size);
             szdd_decompressor dec;
             byte_vector output(expected.size() + 16);
@@ -399,7 +399,7 @@ TEST_SUITE("SzddFullStreaming") {
         auto data = make_szdd_data(lzss_content, static_cast<u32>(expected.size()));
 
         // Use streaming test framework approach
-        for (size_t chunk_size : {1, 2, 3, 5, 7, 11, 13, 17, 32, 64}) {
+        for (size_t chunk_size : {1uz, 2uz, 3uz, 5uz, 7uz, 11uz, 13uz, 17uz, 32uz, 64uz}) {
             CAPTURE(chunk_size);
             szdd_decompressor dec;
             byte_vector output(expected.size() + 128);
