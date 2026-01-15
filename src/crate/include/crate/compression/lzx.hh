@@ -57,7 +57,11 @@ public:
     /// @param window_bits Window size in bits (15-21, unchecked)
     explicit lzx_decompressor(unsigned window_bits);
 
-    result_t<size_t> decompress(byte_span input, mutable_byte_span output) override;
+    result_t<stream_result> decompress_some(
+        byte_span input,
+        mutable_byte_span output,
+        bool input_finished = false
+    ) override;
 
     void reset() override;
 

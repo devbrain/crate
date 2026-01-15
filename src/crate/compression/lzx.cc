@@ -15,7 +15,16 @@ lzx_decompressor::lzx_decompressor(unsigned window_bits)
       num_position_slots_(calculate_position_slots(window_bits)) {
     init_state();
 }
-result_t<unsigned long> lzx_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> lzx_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    // LZX decompression requires all input data at once
+    if (!input_finished) {
+        return stream_result::need_input(0, 0);
+    }
+
     msb_bitstream bs(input);
     size_t out_pos = 0;
     size_t remaining = output.size();
@@ -103,7 +112,7 @@ result_t<unsigned long> lzx_decompressor::decompress(byte_span input, mutable_by
         remaining -= block_size;
     }
 
-    return out_pos;
+    return stream_result::done(input.size(), out_pos);
 }
 void lzx_decompressor::reset() {
     init_state();

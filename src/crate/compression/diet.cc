@@ -1,54 +1,36 @@
 #include <crate/compression/diet.hh>
-#include <array>
 #include <cstring>
 
 namespace crate {
 
 namespace {
-    // DIET uses an 8KB ring buffer for LZ77 back-references
-    constexpr size_t RING_BUFFER_SIZE = 8192;
-    constexpr size_t RING_BUFFER_MASK = RING_BUFFER_SIZE - 1;
+    constexpr size_t DLZ_HEADER_SIZE = 17;
 }
 
 struct diet_decompressor::impl {
-    // Ring buffer for LZ77 decompression
-    std::array<byte, RING_BUFFER_SIZE> ring_buffer{};
-    size_t ring_pos = 0;
-
-    // Bit buffer for reading compressed data (LSB-first)
-    u32 bit_buffer = 0;
-    int bits_left = 0;
-
-    // Input stream tracking
+    // Input stream
     const byte* input_ptr = nullptr;
     const byte* input_end = nullptr;
 
-    // Output tracking
+    // Output buffer
+    byte* output_start = nullptr;
     byte* output_ptr = nullptr;
     byte* output_end = nullptr;
-    size_t bytes_written = 0;
+
+    // Bit buffer: 16-bit code word, read LSB-first
+    u16 code_word = 0;
+    u8 bits_remaining = 1;  // Start at 1 to trigger initial load
 
     void reset_state() {
-        ring_buffer.fill(0x20);  // Fill with spaces (common for text)
-        ring_pos = RING_BUFFER_SIZE - 256;  // Start position
-        bit_buffer = 0;
-        bits_left = 0;
         input_ptr = nullptr;
         input_end = nullptr;
+        output_start = nullptr;
         output_ptr = nullptr;
         output_end = nullptr;
-        bytes_written = 0;
+        code_word = 0;
+        bits_remaining = 1;
     }
 
-    bool has_input_bytes(size_t n) const {
-        return static_cast<size_t>(input_end - input_ptr) >= n;
-    }
-
-    bool has_output_space(size_t n) const {
-        return static_cast<size_t>(output_end - output_ptr) >= n;
-    }
-
-    // Read a byte from input
     u8 read_byte() {
         if (input_ptr >= input_end) {
             return 0;
@@ -56,304 +38,211 @@ struct diet_decompressor::impl {
         return *input_ptr++;
     }
 
-    // Fill bit buffer with more bits (16 bits at a time, LSB first)
-    void fill_bits() {
-        while (bits_left <= 16 && has_input_bytes(1)) {
-            bit_buffer |= static_cast<u32>(read_byte()) << bits_left;
-            bits_left += 8;
+    void write_byte(u8 b) {
+        if (output_ptr < output_end) {
+            *output_ptr++ = b;
         }
     }
 
-    // Get a single bit (LSB first)
-    int get_bit() {
-        if (bits_left < 1) {
-            fill_bits();
-            if (bits_left < 1) {
-                return -1;  // No more bits
-            }
+    // Get next control bit from the code word (LSB first).
+    // Reloads a new 16-bit word when exhausted.
+    bool next_bit() {
+        bool bit = (code_word & 1) != 0;
+        code_word >>= 1;
+        bits_remaining--;
+
+        if (bits_remaining == 0) {
+            u8 lo = read_byte();
+            u8 hi = read_byte();
+            code_word = static_cast<u16>(static_cast<u16>(lo) | (static_cast<u16>(hi) << 8));
+            bits_remaining = 16;
         }
-        int bit = bit_buffer & 1;
-        bit_buffer >>= 1;
-        bits_left--;
+
         return bit;
     }
 
-    // Get multiple bits (LSB first)
-    int get_bits(int count) {
-        if (count <= 0) return 0;
+    // Rotate left through carry - emulates x86 RCL instruction
+    static void rotate_left_carry(u8& value, bool carry_in) {
+        value = static_cast<u8>((value << 1) | (carry_in ? 1 : 0));
+    }
 
-        while (bits_left < count) {
-            fill_bits();
-            if (bits_left < count) {
-                return -1;  // Not enough bits
+    // Copy match from history buffer
+    result_t<void> copy_match(i16 offset, u16 length) {
+        for (u16 i = 0; i < length; i++) {
+            size_t current_pos = static_cast<size_t>(output_ptr - output_start);
+            i32 signed_offset = static_cast<i32>(offset);
+
+            if (signed_offset >= 0) {
+                return std::unexpected(error{error_code::CorruptData,
+                    "DLZ: invalid positive offset"});
             }
-        }
 
-        int value = static_cast<int>(bit_buffer & ((1u << count) - 1));
-        bit_buffer >>= count;
-        bits_left -= count;
-        return value;
+            size_t src_pos = static_cast<size_t>(static_cast<i64>(current_pos) + signed_offset);
+            if (src_pos >= current_pos) {
+                return std::unexpected(error{error_code::CorruptData,
+                    "DLZ: offset underflow"});
+            }
+
+            write_byte(output_start[src_pos]);
+        }
+        return {};
     }
 
-    // Write a byte to output and ring buffer
-    void write_byte(byte b) {
-        if (output_ptr < output_end) {
-            *output_ptr++ = b;
-            bytes_written++;
+    // Parse DLZ header
+    static result_t<std::pair<size_t, size_t>> parse_header(byte_span data) {
+        if (data.size() < DLZ_HEADER_SIZE) {
+            return std::unexpected(error{error_code::TruncatedArchive,
+                "DLZ header too short"});
         }
-        ring_buffer[ring_pos] = b;
-        ring_pos = (ring_pos + 1) & RING_BUFFER_MASK;
+
+        // Verify "dlz" signature at offset 6
+        if (data[6] != 'd' || data[7] != 'l' || data[8] != 'z') {
+            return std::unexpected(error{error_code::InvalidSignature,
+                "Not a valid DLZ/DIET file"});
+        }
+
+        // Compressed size: 4 bits from flags + 16 bits little-endian
+        u8 flags = data[9];
+        u16 size_lo = static_cast<u16>(static_cast<u16>(data[10]) | (static_cast<u16>(data[11]) << 8));
+        size_t compressed_size = (static_cast<size_t>(flags & 0x0F) << 16) | size_lo;
+
+        // Decompressed size: 6 bits + 16 bits little-endian
+        u8 size_hi = data[14];
+        u16 decomp_lo = static_cast<u16>(static_cast<u16>(data[15]) | (static_cast<u16>(data[16]) << 8));
+        size_t decompressed_size = (static_cast<size_t>((size_hi >> 2) & 0x3F) << 16) | decomp_lo;
+
+        return std::make_pair(compressed_size, decompressed_size);
     }
 
-    // Copy from ring buffer (LZ77 match)
-    void copy_from_ring(size_t offset, size_t length) {
-        size_t src_pos = (ring_pos - offset) & RING_BUFFER_MASK;
-        for (size_t i = 0; i < length && output_ptr < output_end; i++) {
-            byte b = ring_buffer[src_pos];
-            write_byte(b);
-            src_pos = (src_pos + 1) & RING_BUFFER_MASK;
-        }
-    }
-
-    // Read match length using DIET's variable-length encoding
-    // Returns -1 on error, 0 for stop code
-    int read_match_length() {
-        int bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Length 2
-            return 2;
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Length 3
-            return 3;
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Length 4
-            return 4;
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Length 5-6 (1 more bit)
-            int extra = get_bit();
-            if (extra < 0) return -1;
-            return 5 + extra;
-        }
-
-        // 0000 prefix
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Length 7-8 (1 more bit)
-            int extra = get_bit();
-            if (extra < 0) return -1;
-            return 7 + extra;
-        }
-
-        // 00000 prefix - read 3 more bits for length 9-16
-        int extra = get_bits(3);
-        if (extra < 0) return -1;
-
-        if (extra != 0) {
-            return 9 + extra - 1;  // 9-16
-        }
-
-        // 00000 000 - read byte for extended length or stop code
-        if (!has_input_bytes(1)) {
-            return -1;
-        }
-
-        int len_byte = read_byte();
-        if (len_byte == 0) {
-            return 0;  // Stop code
-        }
-
-        return 16 + len_byte;  // 17-272
-    }
-
-    // Read match offset for 2-byte match
-    int read_offset_2byte() {
-        int bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Short offset: read 8 bits
-            int offset = get_bits(8);
-            if (offset < 0) return -1;
-            return offset + 1;  // 1-256
-        }
-
-        // Longer offset
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Medium offset: read 9 bits
-            int offset = get_bits(9);
-            if (offset < 0) return -1;
-            return 256 + offset + 1;  // 257-768
-        }
-
-        // Long offset: read 10 bits
-        int offset = get_bits(10);
-        if (offset < 0) return -1;
-        return 768 + offset + 1;  // 769-1792
-    }
-
-    // Read match offset for longer matches
-    int read_offset_long([[maybe_unused]] int length) {
-        int bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Short offset: read 8 bits
-            int offset = get_bits(8);
-            if (offset < 0) return -1;
-            return offset + 1;  // 1-256
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Medium-short: read 9 bits
-            int offset = get_bits(9);
-            if (offset < 0) return -1;
-            return 256 + offset + 1;  // 257-768
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Medium: read 10 bits
-            int offset = get_bits(10);
-            if (offset < 0) return -1;
-            return 768 + offset + 1;  // 769-1792
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Medium-long: read 11 bits
-            int offset = get_bits(11);
-            if (offset < 0) return -1;
-            return 1792 + offset + 1;  // 1793-3840
-        }
-
-        bit = get_bit();
-        if (bit < 0) return -1;
-
-        if (bit == 1) {
-            // Long: read 12 bits
-            int offset = get_bits(12);
-            if (offset < 0) return -1;
-            return 3840 + offset + 1;  // 3841-8192
-        }
-
-        // Maximum: read 13 bits
-        int offset = get_bits(13);
-        if (offset < 0) return -1;
-        return offset + 1;
-    }
-
-    // Main decompression routine
+    // Main decompression - faithful to original x86 algorithm.
+    // Uses labeled gotos because the control flow is inherently non-structured.
     result_t<size_t> decompress_data() {
-        while (true) {
-            int bit = get_bit();
-            if (bit < 0) {
-                // End of input
+        u8 offset_lo;       // Low byte of match offset
+        u8 offset_hi;       // High byte of match offset
+        u16 match_length;   // Number of bytes to copy
+        u8 adjustment;      // Offset/length adjustment value
+        u16 counter;        // Loop counter
+        bool bit;
+
+        // Prime the bit buffer
+        next_bit();
+
+    copy_literals:
+        // Copy literal bytes while control bit is 1
+        while (next_bit()) {
+            write_byte(read_byte());
+        }
+
+        // Control bit was 0 - decode match
+        bit = next_bit();
+
+        // Base offset: low byte from input, high byte = 0xFF (range -256 to -1)
+        offset_lo = read_byte();
+        offset_hi = 0xFF;
+
+        if (bit) {
+            // Extended offset path
+            bit = next_bit();
+            rotate_left_carry(offset_hi, bit);
+
+            bit = next_bit();
+            if (!bit) {
+                // Further extend offset with variable-length encoding
+                adjustment = 2;
+                counter = 3;
+                while (counter > 0) {
+                    bit = next_bit();
+                    if (bit) {
+                        break;
+                    }
+                    bit = next_bit();
+                    rotate_left_carry(offset_hi, bit);
+                    adjustment <<= 1;
+                    counter--;
+                }
+                offset_hi -= adjustment;
+            }
+
+            // Decode match length (unary + extensions)
+            adjustment = 2;
+            counter = 4;
+
+        decode_length:
+            while (true) {
+                adjustment++;
+                bit = next_bit();
+                if (!bit) {
+                    counter--;
+                    if (counter != 0) {
+                        goto decode_length;
+                    }
+                    // Counter exhausted - check for extended length encoding
+                    bit = next_bit();
+                    if (!bit) {
+                        bit = next_bit();
+                        if (bit) {
+                            // Byte-encoded length
+                            match_length = static_cast<u16>(read_byte()) + 17;
+                        } else {
+                            // 3-bit encoded length
+                            adjustment = 0;
+                            for (int i = 0; i < 3; i++) {
+                                bit = next_bit();
+                                rotate_left_carry(adjustment, bit);
+                            }
+                            match_length = adjustment + 9;
+                        }
+                        goto do_copy;
+                    }
+                    adjustment++;
+                    bit = next_bit();
+                    if (bit) {
+                        adjustment++;
+                    }
+                }
+                match_length = adjustment;
                 break;
             }
-
-            if (bit == 1) {
-                // Literal byte
-                if (!has_input_bytes(1)) {
-                    return std::unexpected(error{error_code::InputBufferUnderflow,
-                        "DIET: unexpected end of input"});
-                }
-                write_byte(read_byte());
-                continue;
-            }
-
-            // Match or special code
-            bit = get_bit();
-            if (bit < 0) {
-                return std::unexpected(error{error_code::InputBufferUnderflow,
-                    "DIET: unexpected end of input"});
-            }
-
-            if (bit == 0) {
-                // Could be stop code or 2-byte match
-                int length = read_match_length();
-                if (length < 0) {
-                    return std::unexpected(error{error_code::CorruptData,
-                        "DIET: invalid match length"});
-                }
-                if (length == 0) {
-                    // Stop code
-                    break;
-                }
-
-                int offset;
-                if (length == 2) {
-                    offset = read_offset_2byte();
-                } else {
-                    offset = read_offset_long(length);
-                }
-
-                if (offset < 0) {
-                    return std::unexpected(error{error_code::CorruptData,
-                        "DIET: invalid match offset"});
-                }
-
-                if (!has_output_space(static_cast<size_t>(length))) {
-                    return std::unexpected(error{error_code::OutputBufferOverflow,
-                        "DIET: output buffer too small"});
-                }
-
-                copy_from_ring(static_cast<size_t>(offset), static_cast<size_t>(length));
-            } else {
-                // 01 prefix - multi-byte match with different encoding
-                int length = read_match_length();
-                if (length < 0) {
-                    return std::unexpected(error{error_code::CorruptData,
-                        "DIET: invalid match length"});
-                }
-                if (length == 0) {
-                    break;
-                }
-
-                int offset = read_offset_long(length);
-                if (offset < 0) {
-                    return std::unexpected(error{error_code::CorruptData,
-                        "DIET: invalid match offset"});
-                }
-
-                if (!has_output_space(static_cast<size_t>(length))) {
-                    return std::unexpected(error{error_code::OutputBufferOverflow,
-                        "DIET: output buffer too small"});
-                }
-
-                copy_from_ring(static_cast<size_t>(offset), static_cast<size_t>(length));
-            }
+            goto do_copy;
         }
 
-        return bytes_written;
+        // Short offset path (bit was 0)
+        bit = next_bit();
+        if (bit) {
+            // 3-bit offset extension
+            for (int i = 0; i < 3; i++) {
+                bit = next_bit();
+                rotate_left_carry(offset_hi, bit);
+            }
+            offset_hi--;
+            match_length = 2;
+        } else {
+            // Check for end-of-stream or minimal match
+            if (offset_lo == offset_hi) {
+                // Potential termination marker
+                bit = next_bit();
+                if (!bit) {
+                    // End of decompression
+                    goto done;
+                }
+                // Not end - continue copying literals
+                goto copy_literals;
+            }
+            match_length = 2;
+        }
+
+    do_copy:
+        {
+            i16 offset = static_cast<i16>((static_cast<u16>(offset_hi) << 8) | offset_lo);
+            auto result = copy_match(offset, match_length);
+            if (!result) {
+                return std::unexpected(result.error());
+            }
+        }
+        goto copy_literals;
+
+    done:
+        return static_cast<size_t>(output_ptr - output_start);
     }
 };
 
@@ -364,14 +253,55 @@ diet_decompressor::diet_decompressor()
 
 diet_decompressor::~diet_decompressor() = default;
 
-result_t<size_t> diet_decompressor::decompress(byte_span input, mutable_byte_span output) {
-    pimpl_->input_ptr = input.data();
-    pimpl_->input_end = input.data() + input.size();
+result_t<stream_result> diet_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    // DIET decompression requires all input data at once
+    if (!input_finished) {
+        return stream_result::need_input(0, 0);
+    }
+
+    if (input.size() < DLZ_HEADER_SIZE) {
+        return std::unexpected(error{error_code::TruncatedArchive,
+            "Input too small for DLZ header"});
+    }
+
+    auto header_result = impl::parse_header(input);
+    if (!header_result) {
+        return std::unexpected(header_result.error());
+    }
+
+    auto [compressed_size, decompressed_size] = *header_result;
+
+    if (input.size() < DLZ_HEADER_SIZE + compressed_size) {
+        return std::unexpected(error{error_code::TruncatedArchive,
+            "Input smaller than compressed size in header"});
+    }
+
+    if (output.size() < decompressed_size) {
+        return std::unexpected(error{error_code::OutputBufferOverflow,
+            "Output buffer too small for decompressed data"});
+    }
+
+    // Initialize decompression state
+    pimpl_->input_ptr = input.data() + DLZ_HEADER_SIZE;
+    pimpl_->input_end = pimpl_->input_ptr + compressed_size;
+    pimpl_->output_start = output.data();
     pimpl_->output_ptr = output.data();
     pimpl_->output_end = output.data() + output.size();
-    pimpl_->bytes_written = 0;
+    pimpl_->code_word = 0;
+    pimpl_->bits_remaining = 1;
 
-    return pimpl_->decompress_data();
+    auto result = pimpl_->decompress_data();
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+
+    report_progress(*result, decompressed_size);
+
+    return stream_result::done(input.size(), *result);
 }
 
 void diet_decompressor::reset() {

@@ -1354,13 +1354,13 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
                     pimpl_->solid_decomp_v5->set_solid_mode(true);
                     // Re-decompress to initialize the dictionary
                     byte_vector dummy(member.original_size);
-                    pimpl_->solid_decomp_v5->decompress(compressed, dummy);
+                    (void)pimpl_->solid_decomp_v5->decompress(compressed, dummy);
                 } else if (pimpl_->version_ == rar::V4) {
                     pimpl_->solid_decomp_v4 = std::make_unique<rar_29_decompressor>();
                     pimpl_->solid_decomp_v4->set_solid_mode(true);
                     // Re-decompress to initialize the dictionary
                     byte_vector dummy(member.original_size);
-                    pimpl_->solid_decomp_v4->decompress(compressed, dummy);
+                    (void)pimpl_->solid_decomp_v4->decompress(compressed, dummy);
                 }
                 pimpl_->solid_last_extracted = file_index;
             }

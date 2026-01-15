@@ -6,6 +6,7 @@ set(CRATE_SOURCES
         crate.cc
         compression/arj_lz.cc
         compression/decompressor.cc
+        compression/decompressing_stream.cc
         compression/diet.cc
         compression/explode.cc
         compression/inflate.cc
@@ -43,7 +44,10 @@ set(CRATE_SOURCES
         formats/stuffit.cc
         formats/zip.cc
         formats/zoo.cc
-        vfs/vfs.cc
+        fs/fat_bpb.cc
+        fs/fat_table.cc
+        fs/fat_directory.cc
+        fs/floppy.cc
 )
 
 set(CRATE_PUBLIC_HEADERS
@@ -54,7 +58,7 @@ set(CRATE_PUBLIC_HEADERS
         ${PROJECT_SOURCE_DIR}/include/crate/compression/kwaj.hh
         ${PROJECT_SOURCE_DIR}/include/crate/compression/szdd.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/decompressor.hh
-        ${PROJECT_SOURCE_DIR}/include/crate/core/vfs.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/core/decompressing_stream.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/error.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/system.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/types.hh
@@ -71,6 +75,7 @@ set(CRATE_PUBLIC_HEADERS
         ${PROJECT_SOURCE_DIR}/include/crate/formats/stuffit.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/zip.hh
         ${PROJECT_SOURCE_DIR}/include/crate/formats/zoo.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/formats/floppy.hh
 )
 
 set(CRATE_PRIVATE_HEADERS
@@ -93,6 +98,9 @@ set(CRATE_PRIVATE_HEADERS
         include/crate/crypto/sha.hh
         include/crate/formats/arc_internal.hh
         include/crate/formats/hyp_internal.hh
+        include/crate/fs/fat_bpb.hh
+        include/crate/fs/fat_table.hh
+        include/crate/fs/fat_directory.hh
 )
 
 # Optional libarchive wrapper sources
@@ -105,12 +113,65 @@ if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
     )
 endif()
 
+# Optional zstd decompressor sources
+if(NEUTRINO_CRATE_WITH_ZSTD)
+    list(APPEND CRATE_SOURCES
+        compression/zstd.cc
+    )
+    list(APPEND CRATE_PUBLIC_HEADERS
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/zstd.hh
+    )
+endif()
+
+# Optional brotli decompressor sources
+if(NEUTRINO_CRATE_WITH_BROTLI)
+    list(APPEND CRATE_SOURCES
+        compression/brotli.cc
+    )
+    list(APPEND CRATE_PUBLIC_HEADERS
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/brotli.hh
+    )
+endif()
+
+# Optional bzip2 decompressor sources
+if(NEUTRINO_CRATE_WITH_BZIP2)
+    list(APPEND CRATE_SOURCES
+        compression/bzip2.cc
+    )
+    list(APPEND CRATE_PUBLIC_HEADERS
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/bzip2.hh
+    )
+endif()
+
+# Optional xz/lzma decompressor sources
+if(NEUTRINO_CRATE_WITH_XZ)
+    list(APPEND CRATE_SOURCES
+        compression/xz.cc
+    )
+    list(APPEND CRATE_PUBLIC_HEADERS
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/xz.hh
+    )
+endif()
+
 # Embedded third-party sources (miniz 3.x has split source files)
 set(CRATE_THIRDPARTY_SOURCES
         ${miniz_SOURCE_DIR}/miniz.c
         ${miniz_SOURCE_DIR}/miniz_tinfl.c
         ${miniz_SOURCE_DIR}/miniz_tdef.c
 )
+
+# Embed bzip2 sources (no CMake build system available)
+if(NEUTRINO_CRATE_WITH_BZIP2)
+    list(APPEND CRATE_THIRDPARTY_SOURCES
+        ${bzip2_SOURCE_DIR}/blocksort.c
+        ${bzip2_SOURCE_DIR}/huffman.c
+        ${bzip2_SOURCE_DIR}/crctable.c
+        ${bzip2_SOURCE_DIR}/randtable.c
+        ${bzip2_SOURCE_DIR}/compress.c
+        ${bzip2_SOURCE_DIR}/decompress.c
+        ${bzip2_SOURCE_DIR}/bzlib.c
+    )
+endif()
 
 # ============================================================================
 # OBJECT library for internal use (testing)
@@ -194,6 +255,84 @@ if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
     )
 
     target_link_libraries(crate PRIVATE archive)
+endif()
+
+# ============================================================================
+# Optional zstd support
+# ============================================================================
+
+if(NEUTRINO_CRATE_WITH_ZSTD)
+    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_ZSTD)
+    target_compile_definitions(crate PUBLIC CRATE_WITH_ZSTD)
+
+    target_include_directories(crate_objects PRIVATE
+        $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib>
+    )
+
+    # Link to appropriate zstd target based on build mode
+    if(NEUTRINO_CRATE_BUILD_SHARED)
+        target_link_libraries(crate PRIVATE libzstd_shared)
+    else()
+        target_link_libraries(crate PRIVATE libzstd_static)
+    endif()
+endif()
+
+# ============================================================================
+# Optional brotli support
+# ============================================================================
+
+if(NEUTRINO_CRATE_WITH_BROTLI)
+    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_BROTLI)
+    target_compile_definitions(crate PUBLIC CRATE_WITH_BROTLI)
+
+    target_include_directories(crate_objects PRIVATE
+        $<BUILD_INTERFACE:${brotli_SOURCE_DIR}/c/include>
+    )
+
+    # Brotli provides static libraries: brotlidec, brotlienc, brotlicommon
+    # We only need the decoder
+    target_link_libraries(crate PRIVATE brotlidec brotlicommon)
+endif()
+
+# ============================================================================
+# Optional bzip2 support
+# ============================================================================
+
+if(NEUTRINO_CRATE_WITH_BZIP2)
+    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_BZIP2)
+    target_compile_definitions(crate PUBLIC CRATE_WITH_BZIP2)
+
+    target_include_directories(crate_objects PRIVATE
+        $<BUILD_INTERFACE:${bzip2_SOURCE_DIR}>
+    )
+
+    # Disable warnings for bzip2 third-party sources
+    set_source_files_properties(
+        ${bzip2_SOURCE_DIR}/blocksort.c
+        ${bzip2_SOURCE_DIR}/huffman.c
+        ${bzip2_SOURCE_DIR}/crctable.c
+        ${bzip2_SOURCE_DIR}/randtable.c
+        ${bzip2_SOURCE_DIR}/compress.c
+        ${bzip2_SOURCE_DIR}/decompress.c
+        ${bzip2_SOURCE_DIR}/bzlib.c
+        PROPERTIES
+            COMPILE_OPTIONS "-w"
+    )
+endif()
+
+# ============================================================================
+# Optional xz/lzma support
+# ============================================================================
+
+if(NEUTRINO_CRATE_WITH_XZ)
+    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_XZ)
+    target_compile_definitions(crate PUBLIC CRATE_WITH_XZ)
+
+    target_include_directories(crate_objects PRIVATE
+        $<BUILD_INTERFACE:${xz_SOURCE_DIR}/src/liblzma/api>
+    )
+
+    target_link_libraries(crate PRIVATE liblzma)
 endif()
 
 # ============================================================================

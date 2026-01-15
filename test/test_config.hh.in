@@ -58,6 +58,30 @@ inline std::filesystem::path stuffit_dir() {
     return testdata_dir() / "stuffit";
 }
 
+inline std::filesystem::path floppy_dir() {
+    return testdata_dir() / "floppy";
+}
+
+inline std::filesystem::path zstd_dir() {
+    return testdata_dir() / "zstd";
+}
+
+inline std::filesystem::path brotli_dir() {
+    return testdata_dir() / "brotli";
+}
+
+inline std::filesystem::path bzip2_dir() {
+    return testdata_dir() / "bzip2";
+}
+
+inline std::filesystem::path xz_dir() {
+    return testdata_dir() / "xz";
+}
+
+inline std::filesystem::path diet_dir() {
+    return testdata_dir() / "diet";
+}
+
 // Legacy compatibility - these map to new centralized structure
 // cab_test_dir() -> testdata/cab (was test-cab/cabs)
 // mspack_test_dir() -> testdata/cab/mspack (was test-mspack/test_files/cabd)

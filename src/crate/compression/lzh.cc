@@ -102,7 +102,16 @@ lzh_decompressor::lzh_decompressor(lzh_format format) : format_(format) {
     }
     init_state();
 }
-result_t<size_t> lzh_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> lzh_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    // LZH decompression requires all input data at once
+    if (!input_finished) {
+        return stream_result::need_input(0, 0);
+    }
+
     msb_bitstream bs(input);
     size_t out_pos = 0;
 
@@ -117,7 +126,7 @@ result_t<size_t> lzh_decompressor::decompress(byte_span input, mutable_byte_span
         out_pos = *block_result;
     }
 
-    return out_pos;
+    return stream_result::done(input.size(), out_pos);
 }
 void lzh_decompressor::reset() {
     init_state();

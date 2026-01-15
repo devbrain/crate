@@ -6,7 +6,16 @@ arj_method4_decompressor::arj_method4_decompressor(bool old_format) : old_format
     init_state();
 }
 
-result_t<size_t> arj_method4_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> arj_method4_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    // ARJ method 4 decompression requires all input data at once
+    if (!input_finished) {
+        return stream_result::need_input(0, 0);
+    }
+
     msb_bitstream bs(input);  // ARJ uses MSB-first bit ordering
     size_t out_pos = 0;
 
@@ -51,7 +60,7 @@ result_t<size_t> arj_method4_decompressor::decompress(byte_span input, mutable_b
         }
     }
 
-    return out_pos;
+    return stream_result::done(input.size(), out_pos);
 }
 void arj_method4_decompressor::reset() {
     init_state();

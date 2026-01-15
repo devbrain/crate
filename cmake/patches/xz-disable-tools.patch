@@ -1,0 +1,39 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -983,6 +983,9 @@ endif()
+
+ option(LZIP_DECODER "Support lzip decoder" ON)
+
++# Option to disable building command-line tools
++option(BUILD_TOOLS "Build xz, xzdec, lzmadec, and lzmainfo command-line tools" ON)
++
+ if(LZIP_DECODER)
+     # If lzip decoder support is requested, make sure LZMA1 decoder is enabled.
+     if(NOT "lzma1" IN_LIST DECODERS)
+@@ -1633,7 +1636,7 @@ endif()
+ # xzdec and lzmadec
+ #############################################################################
+
+-if(HAVE_DECODERS AND (NOT MSVC OR MSVC_VERSION GREATER_EQUAL 1900))
++if(BUILD_TOOLS AND HAVE_DECODERS AND (NOT MSVC OR MSVC_VERSION GREATER_EQUAL 1900))
+     foreach(XZDEC xzdec lzmadec)
+         add_executable("${XZDEC}"
+             src/common/sysdefs.h
+@@ -1691,7 +1694,7 @@ endif()
+ # lzmainfo
+ #############################################################################
+
+-if(HAVE_DECODERS AND (NOT MSVC OR MSVC_VERSION GREATER_EQUAL 1900))
++if(BUILD_TOOLS AND HAVE_DECODERS AND (NOT MSVC OR MSVC_VERSION GREATER_EQUAL 1900))
+     add_executable(lzmainfo
+         src/common/sysdefs.h
+         src/common/tuklib_common.h
+@@ -1747,7 +1750,7 @@ endif()
+ # xz
+ #############################################################################
+
+-if(NOT MSVC OR MSVC_VERSION GREATER_EQUAL 1900)
++if(BUILD_TOOLS AND (NOT MSVC OR MSVC_VERSION GREATER_EQUAL 1900))
+     add_executable(xz
+         src/common/mythread.h
+         src/common/sysdefs.h

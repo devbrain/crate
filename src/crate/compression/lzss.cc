@@ -5,50 +5,173 @@ namespace crate {
 szdd_lzss_decompressor::szdd_lzss_decompressor() {
     init_state();
 }
-result_t<size_t> szdd_lzss_decompressor::decompress(byte_span input, mutable_byte_span output) {
+
+result_t<stream_result> szdd_lzss_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
     size_t in_pos = 0;
     size_t out_pos = 0;
 
-    while (in_pos < input.size() && out_pos < output.size()) {
-        if (in_pos >= input.size())
-            break;
-        u8 control = input[in_pos++];
+    // Helper to advance to next bit, returning to READ_CONTROL after bit 7
+    auto advance_bit = [this]() {
+        current_bit_++;
+        if (current_bit_ >= 8) {
+            current_bit_ = 0;
+            state_ = state::READ_CONTROL;
+        }
+    };
 
-        for (unsigned bit = 0; bit < 8 && out_pos < output.size(); bit++) {
-            if (control & (1 << bit)) {
-                // Literal byte
-                if (in_pos >= input.size())
-                    break;
+    // Main state machine loop
+    while (state_ != state::DONE) {
+        switch (state_) {
+            case state::READ_CONTROL: {
+                if (in_pos >= input.size()) {
+                    // Need more input
+                    if (input_finished) {
+                        // No more input coming - we're done
+                        state_ = state::DONE;
+                    }
+                    goto exit_loop;
+                }
+                control_byte_ = input[in_pos++];
+                current_bit_ = 0;
+                started_ = true;
+
+                // Determine next state based on first bit
+                if (control_byte_ & (1 << current_bit_)) {
+                    state_ = state::READ_LITERAL;
+                } else {
+                    state_ = state::READ_MATCH_LO;
+                }
+                break;
+            }
+
+            case state::READ_LITERAL: {
+                if (in_pos >= input.size()) {
+                    if (input_finished) {
+                        // Truncated - expected literal byte
+                        state_ = state::DONE;
+                    }
+                    goto exit_loop;
+                }
+                if (out_pos >= output.size()) {
+                    // Output buffer full
+                    goto exit_loop;
+                }
+
                 u8 value = input[in_pos++];
                 output[out_pos++] = value;
                 window_[window_pos_++ & WINDOW_MASK] = value;
-            } else {
-                // Match reference
-                if (in_pos + 1 >= input.size())
-                    break;
 
-                u8 lo = input[in_pos++];
+                // Move to next bit
+                advance_bit();
+                if (state_ == state::READ_CONTROL) {
+                    // Will read new control byte on next iteration
+                } else {
+                    // Determine state for next bit
+                    if (control_byte_ & (1 << current_bit_)) {
+                        state_ = state::READ_LITERAL;
+                    } else {
+                        state_ = state::READ_MATCH_LO;
+                    }
+                }
+                break;
+            }
+
+            case state::READ_MATCH_LO: {
+                if (in_pos >= input.size()) {
+                    if (input_finished) {
+                        state_ = state::DONE;
+                    }
+                    goto exit_loop;
+                }
+                match_lo_ = input[in_pos++];
+                state_ = state::READ_MATCH_HI;
+                break;
+            }
+
+            case state::READ_MATCH_HI: {
+                if (in_pos >= input.size()) {
+                    if (input_finished) {
+                        state_ = state::DONE;
+                    }
+                    goto exit_loop;
+                }
                 u8 hi = input[in_pos++];
+                match_pos_ = match_lo_ | ((hi & 0xF0) << 4);
+                match_remaining_ = (hi & 0x0F) + MIN_MATCH;
+                state_ = state::COPY_MATCH;
+                break;
+            }
 
-                unsigned match_pos = lo | ((hi & 0xF0) << 4);
-                unsigned match_len = (hi & 0x0F) + MIN_MATCH;
-
-                for (unsigned i = 0; i < match_len && out_pos < output.size(); i++) {
-                    u8 value = window_[(match_pos + i) & WINDOW_MASK];
+            case state::COPY_MATCH: {
+                // Copy as many bytes as we can
+                while (match_remaining_ > 0 && out_pos < output.size()) {
+                    u8 value = window_[match_pos_++ & WINDOW_MASK];
                     output[out_pos++] = value;
                     window_[window_pos_++ & WINDOW_MASK] = value;
+                    match_remaining_--;
                 }
+
+                if (match_remaining_ > 0) {
+                    // Output buffer full, need to continue later
+                    goto exit_loop;
+                }
+
+                // Match complete, move to next bit
+                advance_bit();
+                if (state_ == state::READ_CONTROL) {
+                    // Will read new control byte
+                } else {
+                    if (control_byte_ & (1 << current_bit_)) {
+                        state_ = state::READ_LITERAL;
+                    } else {
+                        state_ = state::READ_MATCH_LO;
+                    }
+                }
+                break;
             }
+
+            case state::DONE:
+                goto exit_loop;
         }
     }
 
-    return out_pos;
+exit_loop:
+    // If input_finished and we consumed all input, we're done
+    if (input_finished && in_pos >= input.size() && state_ != state::COPY_MATCH) {
+        state_ = state::DONE;
+    }
+
+    if (state_ == state::DONE) {
+        return stream_result::done(in_pos, out_pos);
+    }
+
+    // Determine why we stopped: output full or need more input
+    // If we're in COPY_MATCH and stopped, output must be full
+    // If READ_LITERAL stopped with full output buffer, output is full
+    if (out_pos >= output.size()) {
+        return stream_result::need_output(in_pos, out_pos);
+    }
+    return stream_result::need_input(in_pos, out_pos);
 }
+
 void szdd_lzss_decompressor::reset() {
     init_state();
 }
+
 void szdd_lzss_decompressor::init_state() {
     window_pos_ = INITIAL_POS;
     std::fill(window_.begin(), window_.end(), ' ');
+    state_ = state::READ_CONTROL;
+    control_byte_ = 0;
+    current_bit_ = 0;
+    match_lo_ = 0;
+    match_pos_ = 0;
+    match_remaining_ = 0;
+    started_ = false;
 }
+
 }  // namespace crate

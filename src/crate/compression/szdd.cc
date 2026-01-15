@@ -5,7 +5,32 @@
 namespace crate {
 
     struct szdd_decompressor::impl {
+        // State machine
+        enum class state : u8 {
+            READ_HEADER,      // Buffering header bytes
+            DECOMPRESS_DATA,  // Streaming LZSS decompression
+            DONE              // Finished
+        };
+
+        state current_state = state::READ_HEADER;
         szdd_lzss_decompressor lzss;
+
+        // Header buffering
+        std::array<u8, 14> header_buf{};
+        size_t header_bytes = 0;
+
+        // Parsed header info
+        szdd::header header{};
+        size_t total_output = 0;
+
+        void reset_state() {
+            current_state = state::READ_HEADER;
+            header_buf = {};
+            header_bytes = 0;
+            header = {};
+            total_output = 0;
+            lzss.reset();
+        }
     };
 
     szdd_decompressor::szdd_decompressor() : pimpl_(std::make_unique<impl>()) {}
@@ -49,41 +74,136 @@ namespace crate {
         return header;
     }
 
-    result_t<size_t> szdd_decompressor::decompress(byte_span input, mutable_byte_span output) {
-        auto header_result = parse_header(input);
-        if (!header_result) return std::unexpected(header_result.error());
+    result_t<stream_result> szdd_decompressor::decompress_some(
+        byte_span input,
+        mutable_byte_span output,
+        bool input_finished
+    ) {
+        size_t total_read = 0;
+        size_t total_written = 0;
 
-        const auto& header = *header_result;
+        while (true) {
+            switch (pimpl_->current_state) {
+                case impl::state::READ_HEADER: {
+                    // Buffer header bytes until we have enough
+                    constexpr size_t HEADER_SIZE = 14;  // Max header size
+                    size_t need = HEADER_SIZE - pimpl_->header_bytes;
+                    size_t available = input.size() - total_read;
+                    size_t to_copy = std::min(need, available);
 
-        // Calculate data offset
-        size_t data_offset = header.is_qbasic ? 11 : 14;
+                    if (to_copy > 0) {
+                        std::memcpy(pimpl_->header_buf.data() + pimpl_->header_bytes,
+                                   input.data() + total_read, to_copy);
+                        pimpl_->header_bytes += to_copy;
+                        total_read += to_copy;
+                    }
 
-        if (data_offset >= input.size()) {
-            // No compressed data after header
-            report_progress(0, 0);
-            return 0;
+                    // Try to parse header once we have enough bytes
+                    if (pimpl_->header_bytes >= 8) {
+                        byte_span header_span{pimpl_->header_buf.data(), pimpl_->header_bytes};
+
+                        // Check if this could be QBasic variant (signature: "SZ " + magic)
+                        bool is_qbasic_sig = std::memcmp(header_span.data(), szdd::QBASIC_SIGNATURE, 7) == 0;
+                        // Check if this could be standard SZDD (signature: "SZDD" + magic)
+                        bool is_standard_sig = std::memcmp(header_span.data(), szdd::SIGNATURE, 8) == 0;
+
+                        if (!is_qbasic_sig && !is_standard_sig) {
+                            // Neither signature matches - invalid file
+                            return std::unexpected(error{
+                                error_code::InvalidSignature,
+                                "Not a valid SZDD file"
+                            });
+                        }
+
+                        // QBasic variant needs 11 bytes total
+                        if (is_qbasic_sig && pimpl_->header_bytes >= 11) {
+                            pimpl_->header.is_qbasic = true;
+                            pimpl_->header.comp_method = 'A';
+                            pimpl_->header.missing_char = '\0';
+                            pimpl_->header.uncompressed_size = read_u32_le(header_span.data() + 7);
+                            pimpl_->current_state = impl::state::DECOMPRESS_DATA;
+                            // "Un-read" extra header bytes we buffered
+                            size_t extra = pimpl_->header_bytes - 11;
+                            total_read -= extra;
+                            continue;
+                        }
+
+                        // Standard SZDD needs 14 bytes total
+                        if (is_standard_sig && pimpl_->header_bytes >= 14) {
+                            pimpl_->header.is_qbasic = false;
+                            pimpl_->header.comp_method = header_span[8];
+                            pimpl_->header.missing_char = static_cast<char>(header_span[9]);
+                            pimpl_->header.uncompressed_size = read_u32_le(header_span.data() + 10);
+
+                            if (pimpl_->header.comp_method != 'A') {
+                                return std::unexpected(error{
+                                    error_code::UnsupportedCompression,
+                                    "Only SZDD compression method 'A' is supported"
+                                });
+                            }
+
+                            pimpl_->current_state = impl::state::DECOMPRESS_DATA;
+                            continue;
+                        }
+
+                        // Valid signature prefix but need more bytes - fall through
+                    }
+
+                    // Need more header bytes - check if truncated
+                    if (input_finished) {
+                        // We need at least 8 bytes to check signatures
+                        if (pimpl_->header_bytes < 8) {
+                            return std::unexpected(error{error_code::TruncatedArchive,
+                                "Incomplete SZDD header"});
+                        }
+                        // If we have a valid signature but not enough bytes, it's truncated
+                        // (Invalid signature already handled above)
+                        return std::unexpected(error{error_code::TruncatedArchive,
+                            "Incomplete SZDD header"});
+                    }
+
+                    // Return: need more input
+                    return stream_result::need_input(total_read, total_written);
+                }
+
+                case impl::state::DECOMPRESS_DATA: {
+                    // Delegate to streaming LZSS decompressor
+                    byte_span remaining_input{input.data() + total_read, input.size() - total_read};
+                    mutable_byte_span remaining_output{output.data() + total_written,
+                                                       output.size() - total_written};
+
+                    auto result = pimpl_->lzss.decompress_some(
+                        remaining_input, remaining_output, input_finished);
+
+                    if (!result) {
+                        return std::unexpected(result.error());
+                    }
+
+                    total_read += result->bytes_read;
+                    total_written += result->bytes_written;
+                    pimpl_->total_output += result->bytes_written;
+
+                    if (result->bytes_written > 0) {
+                        report_progress(pimpl_->total_output, pimpl_->header.uncompressed_size);
+                    }
+
+                    if (result->finished()) {
+                        pimpl_->current_state = impl::state::DONE;
+                        return stream_result::done(total_read, total_written);
+                    }
+
+                    // Propagate the status from the inner decompressor
+                    return stream_result{total_read, total_written, result->status};
+                }
+
+                case impl::state::DONE:
+                    return stream_result::done(total_read, total_written);
+            }
         }
-
-        byte_span compressed = input.subspan(data_offset);
-
-        // Check output buffer size
-        if (output.size() < header.uncompressed_size) {
-            return std::unexpected(error{
-                error_code::OutputBufferOverflow,
-                "Output buffer too small for decompressed data"
-            });
-        }
-
-        // Decompress using LZSS
-        auto result = pimpl_->lzss.decompress(compressed, output);
-        if (!result) return std::unexpected(result.error());
-
-        report_progress(*result, header.uncompressed_size);
-        return *result;
     }
 
     void szdd_decompressor::reset() {
-        pimpl_->lzss.reset();
+        pimpl_->reset_state();
     }
 
     std::string szdd_decompressor::recover_filename(std::string_view compressed_name, char missing_char) {

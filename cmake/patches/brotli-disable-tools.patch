@@ -1,0 +1,15 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -169,9 +169,11 @@ if(BROTLI_PARENT_DIRECTORY)
+ endif()
+
+ # Build the brotli executable
+-add_executable(brotli c/tools/brotli.c)
+-target_link_libraries(brotli ${BROTLI_LIBRARIES})
++if(NOT BROTLI_BUNDLED_MODE)
++  add_executable(brotli c/tools/brotli.c)
++  target_link_libraries(brotli ${BROTLI_LIBRARIES})
++endif()
+
+ # Installation
+ if(NOT BROTLI_BUNDLED_MODE)

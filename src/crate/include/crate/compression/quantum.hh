@@ -49,7 +49,16 @@ public:
         init_state();
     }
 
-    result_t<size_t> decompress(byte_span input, mutable_byte_span output) override {
+    result_t<stream_result> decompress_some(
+        byte_span input,
+        mutable_byte_span output,
+        bool input_finished = false
+    ) override {
+        // Quantum decompression requires all input data at once
+        if (!input_finished) {
+            return stream_result::need_input(0, 0);
+        }
+
         if (input.size() < 2) {
             return std::unexpected(error{error_code::InputBufferUnderflow});
         }
@@ -144,7 +153,7 @@ public:
             }
         }
 
-        return out_pos;
+        return stream_result::done(input.size(), out_pos);
     }
 
     void reset() override { init_state(); }

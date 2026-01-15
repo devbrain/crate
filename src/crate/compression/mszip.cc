@@ -5,7 +5,16 @@ namespace crate {
 mszip_decompressor::mszip_decompressor() {
     init_state();
 }
-result_t<size_t> mszip_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> mszip_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    // MSZIP decompression requires all input data at once
+    if (!input_finished) {
+        return stream_result::need_input(0, 0);
+    }
+
     // Check MSZIP signature
     if (input.size() < 2 || input[0] != 'C' || input[1] != 'K') {
         return std::unexpected(error{error_code::InvalidSignature, "Missing MSZIP 'CK' signature"});
@@ -77,7 +86,7 @@ result_t<size_t> mszip_decompressor::decompress(byte_span input, mutable_byte_sp
             break;
     }
 
-    return out_pos;
+    return stream_result::done(input.size(), out_pos);
 }
 void mszip_decompressor::reset() {
     init_state();

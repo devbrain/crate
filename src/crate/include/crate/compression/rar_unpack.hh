@@ -315,7 +315,16 @@ namespace crate {
                 init_huff();
             }
 
-            result_t <size_t> decompress(byte_span input, mutable_byte_span output) override {
+            result_t<stream_result> decompress_some(
+                byte_span input,
+                mutable_byte_span output,
+                bool input_finished = false
+            ) override {
+                // RAR 1.5 decompression requires all input data at once
+                if (!input_finished) {
+                    return stream_result::need_input(0, 0);
+                }
+
                 inp_.init(input);
 
                 // Initialize window
@@ -396,7 +405,7 @@ namespace crate {
                     output[i] = window_[i & WINDOW_MASK];
                 }
 
-                return copy_size;
+                return stream_result::done(input.size(), copy_size);
             }
 
             void reset() override {
@@ -780,7 +789,16 @@ namespace crate {
             void set_solid_mode(bool solid) { solid_mode_ = solid; }
             bool is_solid_mode() const { return solid_mode_; }
 
-            result_t <size_t> decompress(byte_span input, mutable_byte_span output) override {
+            result_t<stream_result> decompress_some(
+                byte_span input,
+                mutable_byte_span output,
+                bool input_finished = false
+            ) override {
+                // RAR 2.9/3.x decompression requires all input data at once
+                if (!input_finished) {
+                    return stream_result::need_input(0, 0);
+                }
+
                 inp_.init(input);
                 input_span_ = input; // Store for later PPM use
 
@@ -1018,7 +1036,7 @@ namespace crate {
                 for (size_t i = 0; i < copy_size; i++) {
                     output[i] = window_[(solid_start + i) & win_mask];
                 }
-                return copy_size;
+                return stream_result::done(input.size(), copy_size);
             }
 
             void reset() override {
@@ -1260,7 +1278,16 @@ namespace crate {
             void set_solid_mode(bool solid) { solid_mode_ = solid; }
             bool is_solid_mode() const { return solid_mode_; }
 
-            result_t <size_t> decompress(byte_span input, mutable_byte_span output) override {
+            result_t<stream_result> decompress_some(
+                byte_span input,
+                mutable_byte_span output,
+                bool input_finished = false
+            ) override {
+                // RAR 5.x decompression requires all input data at once
+                if (!input_finished) {
+                    return stream_result::need_input(0, 0);
+                }
+
                 inp_.init(input);
 
                 // Initialize window
@@ -1468,7 +1495,7 @@ namespace crate {
                 filter_processor_.apply_filters(output.data(), copy_size, written_file_pos_);
                 written_file_pos_ += copy_size;
 
-                return copy_size;
+                return stream_result::done(input.size(), copy_size);
             }
 
             void reset() override {

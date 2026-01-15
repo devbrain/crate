@@ -124,7 +124,16 @@ namespace crate {
         return header;
     }
 
-    result_t<size_t> kwaj_decompressor::decompress(byte_span input, mutable_byte_span output) {
+    result_t<stream_result> kwaj_decompressor::decompress_some(
+        byte_span input,
+        mutable_byte_span output,
+        bool input_finished
+    ) {
+        // KWAJ decompression requires all input data at once
+        if (!input_finished) {
+            return stream_result::need_input(0, 0);
+        }
+
         auto header_result = parse_header(input);
         if (!header_result) return std::unexpected(header_result.error());
 
@@ -182,7 +191,7 @@ namespace crate {
         }
 
         report_progress(result_size, header.decompressed_len);
-        return result_size;
+        return stream_result::done(input.size(), result_size);
     }
 
     void kwaj_decompressor::reset() {

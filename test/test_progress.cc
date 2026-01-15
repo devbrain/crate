@@ -20,6 +20,7 @@
 #include <crate/formats/rar.hh>
 #include <crate/formats/chm.hh>
 #include <crate/formats/zip.hh>
+#include <crate/formats/floppy.hh>
 
 #include <filesystem>
 #include <fstream>
@@ -528,6 +529,44 @@ TEST_SUITE("Progress - ZIP Archive") {
     }
 }
 
+TEST_SUITE("Progress - Floppy Image") {
+    TEST_CASE("Byte progress callback during extraction") {
+        auto archive_path = test::floppy_dir() / "Borland - Turbo Pascal v5.0 - Disk 1 of 3 - Install & Compiler.img";
+        if (!std::filesystem::exists(archive_path)) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        auto archive = floppy_image::open(archive_path);
+        REQUIRE(archive.has_value());
+        REQUIRE(!(*archive)->files().empty());
+
+        // Find first file with content
+        const file_entry* test_entry = nullptr;
+        for (const auto& entry : (*archive)->files()) {
+            if (!entry.is_directory && entry.uncompressed_size > 0) {
+                test_entry = &entry;
+                break;
+            }
+        }
+
+        if (!test_entry) {
+            MESSAGE("No extractable file found, skipping");
+            return;
+        }
+
+        archive_progress_tracker tracker;
+        (*archive)->set_byte_progress_callback(tracker.make_callback());
+
+        auto result = (*archive)->extract(*test_entry);
+
+        REQUIRE(result.has_value());
+        CHECK(tracker.call_count > 0);
+        CHECK(tracker.last_bytes_written == result->size());
+        MESSAGE("Floppy image byte progress callback called ", tracker.call_count.load(), " times");
+    }
+}
+
 #ifdef CRATE_WITH_LIBARCHIVE
 #include <crate/formats/libarchive_archive.hh>
 
@@ -567,6 +606,118 @@ TEST_SUITE("Progress - libarchive Archive") {
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
         MESSAGE("libarchive byte progress callback called ", tracker.call_count.load(), " times");
+    }
+}
+#endif
+
+#ifdef CRATE_WITH_ZSTD
+#include <crate/compression/zstd.hh>
+
+TEST_SUITE("Progress - Zstd Decompressor") {
+    TEST_CASE("Progress callback is called during decompression") {
+        auto compressed = read_file(test::testdata_dir() / "zstd" / "LICENSE.zst");
+
+        if (compressed.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        progress_tracker tracker;
+        zstd_decompressor decompressor;
+        decompressor.set_progress_callback(tracker.make_decompressor_callback());
+
+        // Allocate reasonable output buffer (LICENSE file is typically < 64KB)
+        std::vector<u8> output(256 * 1024);
+        auto result = decompressor.decompress(compressed, output);
+
+        REQUIRE(result.has_value());
+        CHECK(tracker.call_count > 0);
+        CHECK(tracker.last_bytes_written == *result);
+        MESSAGE("Zstd progress callback called ", tracker.call_count.load(), " times");
+    }
+}
+#endif
+
+#ifdef CRATE_WITH_BROTLI
+#include <crate/compression/brotli.hh>
+
+TEST_SUITE("Progress - Brotli Decompressor") {
+    TEST_CASE("Progress callback is called during decompression") {
+        auto compressed = read_file(test::testdata_dir() / "brotli" / "LICENSE.br");
+
+        if (compressed.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        progress_tracker tracker;
+        brotli_decompressor decompressor;
+        decompressor.set_progress_callback(tracker.make_decompressor_callback());
+
+        // Allocate reasonable output buffer (LICENSE file is typically < 64KB)
+        std::vector<u8> output(256 * 1024);
+        auto result = decompressor.decompress(compressed, output);
+
+        REQUIRE(result.has_value());
+        CHECK(tracker.call_count > 0);
+        CHECK(tracker.last_bytes_written == *result);
+        MESSAGE("Brotli progress callback called ", tracker.call_count.load(), " times");
+    }
+}
+#endif
+
+#ifdef CRATE_WITH_BZIP2
+#include <crate/compression/bzip2.hh>
+
+TEST_SUITE("Progress - Bzip2 Decompressor") {
+    TEST_CASE("Progress callback is called during decompression") {
+        auto compressed = read_file(test::testdata_dir() / "bzip2" / "LICENSE.bz2");
+
+        if (compressed.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        progress_tracker tracker;
+        bzip2_decompressor decompressor;
+        decompressor.set_progress_callback(tracker.make_decompressor_callback());
+
+        // Allocate reasonable output buffer (LICENSE file is typically < 64KB)
+        std::vector<u8> output(256 * 1024);
+        auto result = decompressor.decompress(compressed, output);
+
+        REQUIRE(result.has_value());
+        CHECK(tracker.call_count > 0);
+        CHECK(tracker.last_bytes_written == *result);
+        MESSAGE("Bzip2 progress callback called ", tracker.call_count.load(), " times");
+    }
+}
+#endif
+
+#ifdef CRATE_WITH_XZ
+#include <crate/compression/xz.hh>
+
+TEST_SUITE("Progress - XZ Decompressor") {
+    TEST_CASE("Progress callback is called during decompression") {
+        auto compressed = read_file(test::testdata_dir() / "xz" / "LICENSE.xz");
+
+        if (compressed.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        progress_tracker tracker;
+        xz_decompressor decompressor;
+        decompressor.set_progress_callback(tracker.make_decompressor_callback());
+
+        // Allocate reasonable output buffer (LICENSE file is typically < 64KB)
+        std::vector<u8> output(256 * 1024);
+        auto result = decompressor.decompress(compressed, output);
+
+        REQUIRE(result.has_value());
+        CHECK(tracker.call_count > 0);
+        CHECK(tracker.last_bytes_written == *result);
+        MESSAGE("XZ progress callback called ", tracker.call_count.load(), " times");
     }
 }
 #endif

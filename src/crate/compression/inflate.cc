@@ -18,6 +18,7 @@ namespace crate {
 
 struct inflate_decompressor::impl {
     tinfl_decompressor inflator{};
+    bool finished = false;
 
     impl() {
         tinfl_init(&inflator);
@@ -30,9 +31,22 @@ inflate_decompressor::inflate_decompressor()
 
 inflate_decompressor::~inflate_decompressor() = default;
 
-result_t<size_t> inflate_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> inflate_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    if (pimpl_->finished) {
+        return stream_result::done(0, 0);
+    }
+
     size_t in_bytes = input.size();
     size_t out_bytes = output.size();
+
+    mz_uint32 flags = TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
+    if (!input_finished) {
+        flags |= TINFL_FLAG_HAS_MORE_INPUT;
+    }
 
     auto status = tinfl_decompress(
         &pimpl_->inflator,
@@ -41,22 +55,35 @@ result_t<size_t> inflate_decompressor::decompress(byte_span input, mutable_byte_
         output.data(),
         output.data(),
         &out_bytes,
-        TINFL_FLAG_PARSE_ZLIB_HEADER * 0 |  // Raw deflate, no header
-        TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF
+        flags
     );
 
-    if (status < TINFL_STATUS_DONE) {
+    if (status < TINFL_STATUS_DONE && status != TINFL_STATUS_NEEDS_MORE_INPUT) {
         return std::unexpected(error{error_code::CorruptData, "DEFLATE decompression failed"});
     }
 
-    // Report progress at completion
-    report_progress(out_bytes, out_bytes);
+    if (status == TINFL_STATUS_DONE) {
+        pimpl_->finished = true;
+        if (out_bytes > 0) {
+            report_progress(out_bytes, 0);
+        }
+        return stream_result::done(in_bytes, out_bytes);
+    }
 
-    return out_bytes;
+    if (out_bytes > 0) {
+        report_progress(out_bytes, 0);
+    }
+
+    // TINFL_STATUS_HAS_MORE_OUTPUT means output buffer is full
+    if (status == TINFL_STATUS_HAS_MORE_OUTPUT) {
+        return stream_result::need_output(in_bytes, out_bytes);
+    }
+    return stream_result::need_input(in_bytes, out_bytes);
 }
 
 void inflate_decompressor::reset() {
     tinfl_init(&pimpl_->inflator);
+    pimpl_->finished = false;
 }
 
 // ============================================================================
@@ -66,6 +93,7 @@ void inflate_decompressor::reset() {
 struct zlib_decompressor::impl {
     mz_stream stream{};
     bool initialized = false;
+    bool finished = false;
 
     impl() {
         init();
@@ -83,6 +111,7 @@ struct zlib_decompressor::impl {
         }
         stream = {};
         initialized = (mz_inflateInit(&stream) == MZ_OK);
+        finished = false;
     }
 };
 
@@ -92,9 +121,17 @@ zlib_decompressor::zlib_decompressor()
 
 zlib_decompressor::~zlib_decompressor() = default;
 
-result_t<size_t> zlib_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> zlib_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
     if (!pimpl_->initialized) {
         return std::unexpected(error{error_code::CorruptData, "zlib initialization failed"});
+    }
+
+    if (pimpl_->finished) {
+        return stream_result::done(0, 0);
     }
 
     pimpl_->stream.next_in = input.data();
@@ -102,16 +139,32 @@ result_t<size_t> zlib_decompressor::decompress(byte_span input, mutable_byte_spa
     pimpl_->stream.next_out = output.data();
     pimpl_->stream.avail_out = static_cast<mz_uint32>(output.size());
 
-    int status = mz_inflate(&pimpl_->stream, MZ_FINISH);
+    int flush = input_finished ? MZ_FINISH : MZ_NO_FLUSH;
+    int status = mz_inflate(&pimpl_->stream, flush);
 
-    if (status != MZ_STREAM_END && status != MZ_OK) {
+    size_t bytes_read = input.size() - pimpl_->stream.avail_in;
+    size_t bytes_written = output.size() - pimpl_->stream.avail_out;
+
+    if (status == MZ_STREAM_END) {
+        pimpl_->finished = true;
+        if (bytes_written > 0) {
+            report_progress(bytes_written, 0);
+        }
+        return stream_result::done(bytes_read, bytes_written);
+    }
+
+    if (status != MZ_OK && status != MZ_BUF_ERROR) {
         return std::unexpected(error{error_code::CorruptData, "zlib decompression failed"});
     }
 
-    size_t out_bytes = pimpl_->stream.total_out;
-    report_progress(out_bytes, out_bytes);
+    if (bytes_written > 0) {
+        report_progress(bytes_written, 0);
+    }
 
-    return out_bytes;
+    if (pimpl_->stream.avail_out == 0) {
+        return stream_result::need_output(bytes_read, bytes_written);
+    }
+    return stream_result::need_input(bytes_read, bytes_written);
 }
 
 void zlib_decompressor::reset() {
@@ -125,6 +178,7 @@ void zlib_decompressor::reset() {
 struct gzip_decompressor::impl {
     mz_stream stream{};
     bool initialized = false;
+    bool finished = false;
 
     impl() {
         init();
@@ -143,6 +197,7 @@ struct gzip_decompressor::impl {
         stream = {};
         // window_bits = 15 + 16 for gzip format
         initialized = (mz_inflateInit2(&stream, MZ_DEFAULT_WINDOW_BITS + 16) == MZ_OK);
+        finished = false;
     }
 };
 
@@ -152,9 +207,17 @@ gzip_decompressor::gzip_decompressor()
 
 gzip_decompressor::~gzip_decompressor() = default;
 
-result_t<size_t> gzip_decompressor::decompress(byte_span input, mutable_byte_span output) {
+result_t<stream_result> gzip_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
     if (!pimpl_->initialized) {
         return std::unexpected(error{error_code::CorruptData, "gzip initialization failed"});
+    }
+
+    if (pimpl_->finished) {
+        return stream_result::done(0, 0);
     }
 
     pimpl_->stream.next_in = input.data();
@@ -162,16 +225,32 @@ result_t<size_t> gzip_decompressor::decompress(byte_span input, mutable_byte_spa
     pimpl_->stream.next_out = output.data();
     pimpl_->stream.avail_out = static_cast<mz_uint32>(output.size());
 
-    int status = mz_inflate(&pimpl_->stream, MZ_FINISH);
+    int flush = input_finished ? MZ_FINISH : MZ_NO_FLUSH;
+    int status = mz_inflate(&pimpl_->stream, flush);
 
-    if (status != MZ_STREAM_END && status != MZ_OK) {
+    size_t bytes_read = input.size() - pimpl_->stream.avail_in;
+    size_t bytes_written = output.size() - pimpl_->stream.avail_out;
+
+    if (status == MZ_STREAM_END) {
+        pimpl_->finished = true;
+        if (bytes_written > 0) {
+            report_progress(bytes_written, 0);
+        }
+        return stream_result::done(bytes_read, bytes_written);
+    }
+
+    if (status != MZ_OK && status != MZ_BUF_ERROR) {
         return std::unexpected(error{error_code::CorruptData, "gzip decompression failed"});
     }
 
-    size_t out_bytes = pimpl_->stream.total_out;
-    report_progress(out_bytes, out_bytes);
+    if (bytes_written > 0) {
+        report_progress(bytes_written, 0);
+    }
 
-    return out_bytes;
+    if (pimpl_->stream.avail_out == 0) {
+        return stream_result::need_output(bytes_read, bytes_written);
+    }
+    return stream_result::need_input(bytes_read, bytes_written);
 }
 
 void gzip_decompressor::reset() {

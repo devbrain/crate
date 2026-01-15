@@ -6,7 +6,7 @@
 
 namespace crate {
 
-// LZSS decompressor for SZDD format
+// LZSS decompressor for SZDD format - true streaming implementation
 class CRATE_EXPORT szdd_lzss_decompressor : public decompressor {
 public:
     static constexpr size_t WINDOW_SIZE = 4096;
@@ -17,14 +17,43 @@ public:
 
     szdd_lzss_decompressor();
 
-    result_t<size_t> decompress(byte_span input, mutable_byte_span output) override;
+    result_t<stream_result> decompress_some(
+        byte_span input,
+        mutable_byte_span output,
+        bool input_finished = false
+    ) override;
 
     void reset() override;
 
 private:
     void init_state();
+
+    // State machine states
+    enum class state : u8 {
+        READ_CONTROL,   // Need to read control byte
+        READ_LITERAL,   // Need to read literal byte (bit was 1)
+        READ_MATCH_LO,  // Need to read match low byte (bit was 0)
+        READ_MATCH_HI,  // Need to read match high byte
+        COPY_MATCH,     // Copying bytes from window
+        DONE            // Decompression complete
+    };
+
+    // Window buffer
     std::array<u8, WINDOW_SIZE> window_{};
     u32 window_pos_ = INITIAL_POS;
+
+    // State machine
+    state state_ = state::READ_CONTROL;
+    u8 control_byte_ = 0;       // Current control byte
+    u8 current_bit_ = 0;        // Which bit we're processing (0-7)
+
+    // Match state (for COPY_MATCH)
+    u8 match_lo_ = 0;           // Low byte of match reference
+    u16 match_pos_ = 0;         // Position in window to copy from
+    u8 match_remaining_ = 0;    // Bytes remaining to copy
+
+    // For tracking if we've seen any input (to detect empty streams)
+    bool started_ = false;
 };
 
 // LZSS + Huffman decompressor for KWAJ format
@@ -35,7 +64,16 @@ public:
 
     kwaj_lzss_decompressor() { init_state(); }
 
-    result_t<size_t> decompress(byte_span input, mutable_byte_span output) override {
+    result_t<stream_result> decompress_some(
+        byte_span input,
+        mutable_byte_span output,
+        bool input_finished = false
+    ) override {
+        // KWAJ LZSS decompression requires all input data at once
+        if (!input_finished) {
+            return stream_result::need_input(0, 0);
+        }
+
         lsb_bitstream bs(input);
         size_t out_pos = 0;
 
@@ -73,7 +111,7 @@ public:
             }
         }
 
-        return out_pos;
+        return stream_result::done(input.size(), out_pos);
     }
 
     void reset() override { init_state(); }
