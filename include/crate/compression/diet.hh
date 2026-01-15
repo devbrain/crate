@@ -1,15 +1,14 @@
 #pragma once
 
 #include <crate/core/decompressor.hh>
+#include <array>
+#include <vector>
 
 namespace crate {
 
-/// DIET decompressor
+/// DIET decompressor (streaming)
 /// DIET was a DOS executable compressor from the early 1990s.
 /// It uses LZSS-style compression with variable-length bit encoding.
-///
-/// This decompressor requires all input data in a single call to decompress_some()
-/// with input_finished=true. Partial streaming is not supported.
 class CRATE_EXPORT diet_decompressor : public decompressor {
 public:
     diet_decompressor();

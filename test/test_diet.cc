@@ -106,23 +106,80 @@ TEST_SUITE("DietDecompressor") {
         CHECK(output2 == expected);
     }
 
-    TEST_CASE("Streaming requires all input") {
+    TEST_CASE("Streaming byte by byte") {
         auto compressed = read_file(test::diet_dir() / "sprites.c");
+        auto expected = read_file(test::diet_dir() / "sprites.d");
 
-        if (compressed.empty()) {
+        if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
             return;
         }
 
         diet_decompressor decompressor;
-        std::vector<u8> output(256 * 1024);
+        std::vector<u8> output(expected.size() + 1024);
+        size_t in_pos = 0;
+        size_t out_pos = 0;
 
-        // Call with input_finished=false should return needs_more_input
-        auto result = decompressor.decompress_some(compressed, output, false);
-        REQUIRE(result.has_value());
-        CHECK(result->status == decode_status::needs_more_input);
-        CHECK(result->bytes_read == 0);
-        CHECK(result->bytes_written == 0);
+        // Feed input in small chunks
+        while (in_pos < compressed.size()) {
+            size_t chunk_size = std::min<size_t>(100, compressed.size() - in_pos);
+            bool is_last = (in_pos + chunk_size >= compressed.size());
+
+            byte_span in_chunk(compressed.data() + in_pos, chunk_size);
+            mutable_byte_span out_chunk(output.data() + out_pos, output.size() - out_pos);
+
+            auto result = decompressor.decompress_some(in_chunk, out_chunk, is_last);
+            if (!result.has_value()) {
+                MESSAGE("Error: " << result.error().message());
+                MESSAGE("in_pos=" << in_pos << " out_pos=" << out_pos << " chunk_size=" << chunk_size);
+            }
+            REQUIRE(result.has_value());
+
+            in_pos += result->bytes_read;
+            out_pos += result->bytes_written;
+
+            if (result->finished()) {
+                break;
+            }
+        }
+
+        CHECK(out_pos == expected.size());
+        output.resize(out_pos);
+        CHECK(output == expected);
+    }
+
+    TEST_CASE("Streaming small output buffer") {
+        auto compressed = read_file(test::diet_dir() / "sprites.c");
+        auto expected = read_file(test::diet_dir() / "sprites.d");
+
+        if (compressed.empty() || expected.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        diet_decompressor decompressor;
+        std::vector<u8> full_output;
+        size_t in_pos = 0;
+
+        while (true) {
+            std::array<u8, 128> small_out{};
+            byte_span remaining_input(compressed.data() + in_pos, compressed.size() - in_pos);
+
+            auto result = decompressor.decompress_some(remaining_input, small_out, true);
+            REQUIRE(result.has_value());
+
+            in_pos += result->bytes_read;
+            for (size_t i = 0; i < result->bytes_written; i++) {
+                full_output.push_back(small_out[i]);
+            }
+
+            if (result->finished()) {
+                break;
+            }
+        }
+
+        CHECK(full_output.size() == expected.size());
+        CHECK(full_output == expected);
     }
 
     TEST_CASE("Empty input") {
