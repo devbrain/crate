@@ -1,11 +1,13 @@
 #include <doctest/doctest.h>
 #include <crate/compression/explode.hh>
 #include <crate/test_config.hh>
+#include "test_streaming.hh"
 #include <filesystem>
 #include <fstream>
 #include <vector>
 
 using namespace crate;
+using namespace crate::test;
 
 namespace {
 
@@ -155,5 +157,87 @@ TEST_SUITE("ExplodeDecompressor") {
         explode_decompressor decompressor;
         auto result = decompressor.decompress(data, output);
         CHECK(!result.has_value());
+    }
+}
+
+TEST_SUITE("ExplodeStreaming") {
+    TEST_CASE("Streaming small file") {
+        auto compressed = read_file(test::pkware_dir() / "small.imploded");
+        auto expected = read_file(test::pkware_dir() / "small.decomp");
+
+        if (compressed.empty() || expected.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        streaming_test_config config;
+        config.name = "PKWARE small";
+        config.compressed = compressed;
+        config.expected = expected;
+        config.output_buffer_sizes = {1, 2, 7, 64, 256};
+
+        run_streaming_tests(config, []() {
+            return std::make_unique<explode_decompressor>();
+        });
+    }
+
+    TEST_CASE("Streaming implicit end") {
+        auto compressed = read_file(test::pkware_dir() / "no-explicit-end.imploded");
+        auto expected = read_file(test::pkware_dir() / "no-explicit-end.decomp");
+
+        if (compressed.empty() || expected.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        streaming_test_config config;
+        config.name = "PKWARE implicit end";
+        config.compressed = compressed;
+        config.expected = expected;
+
+        run_streaming_tests(config, []() {
+            return std::make_unique<explode_decompressor>();
+        });
+    }
+
+    TEST_CASE("Streaming medium file") {
+        auto compressed = read_file(test::pkware_dir() / "medium.imploded");
+        auto expected = read_file(test::pkware_dir() / "medium.decomp");
+
+        if (compressed.empty() || expected.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        streaming_test_config config;
+        config.name = "PKWARE medium";
+        config.compressed = compressed;
+        config.expected = expected;
+        config.output_buffer_sizes = {32, 128, 512, 2048};
+
+        run_streaming_tests(config, []() {
+            return std::make_unique<explode_decompressor>();
+        });
+    }
+
+    TEST_CASE("Streaming large file") {
+        auto compressed = read_file(test::pkware_dir() / "large.imploded");
+        auto expected = read_file(test::pkware_dir() / "large.decomp");
+
+        if (compressed.empty() || expected.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        streaming_test_config config;
+        config.name = "PKWARE large";
+        config.compressed = compressed;
+        config.expected = expected;
+        config.output_buffer_sizes = {64, 256, 1024, 4096};
+        config.random_trials = 5;
+
+        run_streaming_tests(config, []() {
+            return std::make_unique<explode_decompressor>();
+        });
     }
 }

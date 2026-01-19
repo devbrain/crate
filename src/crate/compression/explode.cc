@@ -116,29 +116,35 @@ namespace crate {
     } // anonymous namespace
 
     struct explode_decompressor::impl {
-        // Input tracking
-        const byte* input_ptr = nullptr;
-        const byte* input_end = nullptr;
+        enum class state {
+            READ_HEADER,
+            READ_TOKEN_FLAG,
+            READ_LENGTH_CODE,
+            READ_LENGTH_EXTRA,
+            READ_LITERAL_BINARY,
+            READ_LITERAL_ASCII_START,
+            READ_LITERAL_ASCII_4,
+            READ_LITERAL_ASCII_6,
+            READ_LITERAL_ASCII_FINAL,
+            READ_DISTANCE,
+            WRITE_LITERAL,
+            COPY_MATCH,
+            DONE
+        };
 
-        // Output tracking
-        byte* output_start = nullptr;
-        byte* output_ptr = nullptr;
-        byte* output_end = nullptr;
-        size_t total_expected = 0;
+        state state_ = state::READ_HEADER;
 
-        // Progress reporting
-        std::function <void(size_t, size_t)> progress_reporter;
-        size_t last_progress_report = 0;
-        static constexpr size_t PROGRESS_INTERVAL = 4096; // Report every 4KB
+        std::array <u8, 3> header_{};
+        size_t header_pos_ = 0;
 
         // Bit buffer (16-bit, LSB first)
-        u32 bit_buff = 0;
-        unsigned int extra_bits = 0;
+        u32 bit_buff_ = 0;
+        unsigned int extra_bits_ = 0;
 
         // Compression parameters
-        int ctype = 0; // CMP_BINARY or CMP_ASCII
-        unsigned int dsize_bits = 0; // Dictionary size bits (4, 5, or 6)
-        u32 dsize_mask = 0; // Dictionary size mask
+        int ctype_ = 0; // CMP_BINARY or CMP_ASCII
+        unsigned int dsize_bits_ = 0; // Dictionary size bits (4, 5, or 6)
+        u32 dsize_mask_ = 0; // Dictionary size mask
 
         // Decode tables (built at runtime)
         std::array <u8, 0x100> DistPosCodes{};
@@ -153,33 +159,36 @@ namespace crate {
         std::array <byte, OUT_BUFF_SIZE> out_buff{};
         size_t out_pos = 0;
 
+        // Decode state
+        unsigned int length_code_ = 0;
+        unsigned int ascii_value_ = 0;
+        u8 pending_literal_ = 0;
+
+        size_t match_remaining_ = 0;
+        size_t match_src_pos_ = 0;
+
+        size_t total_output_ = 0;
+        size_t last_progress_report_ = 0;
+        static constexpr size_t PROGRESS_INTERVAL = 4096; // Report every 4KB
+
         void reset_state() {
-            input_ptr = nullptr;
-            input_end = nullptr;
-            output_start = nullptr;
-            output_ptr = nullptr;
-            output_end = nullptr;
-            total_expected = 0;
-            progress_reporter = nullptr;
-            last_progress_report = 0;
-            bit_buff = 0;
-            extra_bits = 0;
-            ctype = 0;
-            dsize_bits = 0;
-            dsize_mask = 0;
+            state_ = state::READ_HEADER;
+            header_.fill(0);
+            header_pos_ = 0;
+            bit_buff_ = 0;
+            extra_bits_ = 0;
+            ctype_ = 0;
+            dsize_bits_ = 0;
+            dsize_mask_ = 0;
             out_pos = 0x1000; // Start in middle of buffer
             out_buff.fill(0);
-        }
-
-        bool has_input() const {
-            return input_ptr < input_end;
-        }
-
-        u8 read_byte() {
-            if (input_ptr >= input_end) {
-                return 0;
-            }
-            return static_cast <u8>(*input_ptr++);
+            length_code_ = 0;
+            ascii_value_ = 0;
+            pending_literal_ = 0;
+            match_remaining_ = 0;
+            match_src_pos_ = 0;
+            total_output_ = 0;
+            last_progress_report_ = 0;
         }
 
         // Generate decode tables from code/bits arrays
@@ -250,199 +259,290 @@ namespace crate {
             }
         }
 
-        // Remove bits from buffer, refilling as needed
-        // Returns true on success, false if no more input
-        bool waste_bits(unsigned int nBits) {
-            if (nBits <= extra_bits) {
-                extra_bits -= nBits;
-                bit_buff >>= nBits;
-                return true;
-            }
-
-            bit_buff >>= extra_bits;
-            if (!has_input()) {
-                return false;
-            }
-
-            bit_buff |= static_cast <u32>(read_byte()) << 8;
-            bit_buff >>= (nBits - extra_bits);
-            extra_bits = (extra_bits - nBits) + 8;
-            return true;
-        }
-
-        // Decode a literal or length code
-        // Returns: 0x000-0x0FF: literal byte
-        //          0x100-0x304: repetition length (subtract 0xFE for actual length)
-        //          0x305: end of stream
-        //          0x306: error
-        unsigned int decode_lit() {
-            // If low bit is set, it's a length code
-            if (bit_buff & 1) {
-                if (!waste_bits(1)) return 0x306;
-
-                unsigned int length_code = LengthCodes[bit_buff & 0xFF];
-                if (!waste_bits(LenBits[length_code])) return 0x306;
-
-                // Handle extra length bits
-                if (unsigned int extra_len_bits = ExLenBits[length_code]; extra_len_bits != 0) {
-                    unsigned int extra_length = bit_buff & ((1u << extra_len_bits) - 1);
-                    if (!waste_bits(extra_len_bits)) {
-                        if ((length_code + extra_length) != 0x10E)
-                            return 0x306;
-                    }
-                    length_code = LenBase[length_code] + extra_length;
-                }
-
-                return length_code + 0x100;
-            }
-
-            // Low bit not set - it's a literal
-            if (!waste_bits(1)) return 0x306;
-
-            // Binary mode: next 8 bits are the literal
-            if (ctype == CMP_BINARY) {
-                unsigned int literal = bit_buff & 0xFF;
-                if (!waste_bits(8)) return 0x306;
-                return literal;
-            }
-
-            // ASCII mode: use Huffman tables
-            unsigned int value;
-            if (bit_buff & 0xFF) {
-                value = offs2C34[bit_buff & 0xFF];
-                if (value == 0xFF) {
-                    if (bit_buff & 0x3F) {
-                        if (!waste_bits(4)) return 0x306;
-                        value = offs2D34[bit_buff & 0xFF];
-                    } else {
-                        if (!waste_bits(6)) return 0x306;
-                        value = offs2E34[bit_buff & 0x7F];
-                    }
-                }
-            } else {
-                if (!waste_bits(8)) return 0x306;
-                value = offs2EB4[bit_buff & 0xFF];
-            }
-
-            return waste_bits(ChBitsAscWork[value]) ? value : 0x306;
-        }
-
-        // Decode distance for back-reference
-        unsigned int decode_dist(unsigned int rep_length) {
-            unsigned int dist_pos_code = DistPosCodes[bit_buff & 0xFF];
-            if (!waste_bits(DistBits[dist_pos_code])) return 0;
-
-            unsigned int distance;
-            if (rep_length == 2) {
-                // 2-byte match: use 2 extra bits
-                distance = (dist_pos_code << 2) | (bit_buff & 0x03);
-                if (!waste_bits(2)) return 0;
-            } else {
-                // Longer match: use dsize_bits extra bits
-                distance = (dist_pos_code << dsize_bits) | (bit_buff & dsize_mask);
-                if (!waste_bits(dsize_bits)) return 0;
-            }
-
-            return distance + 1;
-        }
-
-        // Write a byte to output
-        void write_byte(byte b) {
-            out_buff[out_pos++] = b;
-
-            if (output_ptr < output_end) {
-                *output_ptr++ = b;
-
-                // Report progress periodically
-                size_t bytes_written = static_cast <size_t>(output_ptr - output_start);
-                if (progress_reporter && (bytes_written - last_progress_report) >= PROGRESS_INTERVAL) {
-                    progress_reporter(bytes_written, total_expected);
-                    last_progress_report = bytes_written;
-                }
-            }
-
-            // Wrap ring buffer
-            if (out_pos >= 0x2000) {
-                std::memmove(out_buff.data(), out_buff.data() + 0x1000, out_pos - 0x1000);
-                out_pos -= 0x1000;
-            }
-        }
-
-        // Main decompression routine
-        result_t <size_t> decompress_data() {
-            // Read header
-            if (input_end - input_ptr < 3) {
-                return std::unexpected(error{
-                    error_code::InputBufferUnderflow,
-                    "PKWARE: input too short"
-                });
-            }
-
-            ctype = read_byte();
-            dsize_bits = read_byte();
-            bit_buff = read_byte();
-            extra_bits = 0;
-
-            // Validate parameters
-            if (dsize_bits < 4 || dsize_bits > 6) {
-                return std::unexpected(error{
-                    error_code::CorruptData,
-                    "PKWARE: invalid dictionary size"
-                });
-            }
-
-            if (ctype != CMP_BINARY && ctype != CMP_ASCII) {
-                return std::unexpected(error{
-                    error_code::CorruptData,
-                    "PKWARE: invalid compression type"
-                });
-            }
-
-            dsize_mask = 0xFFFFu >> (16 - dsize_bits);
-
-            // Initialize decode tables
-            if (ctype == CMP_ASCII) {
+        void init_tables() {
+            if (ctype_ == CMP_ASCII) {
                 std::copy(ChBitsAsc.begin(), ChBitsAsc.end(), ChBitsAscWork.begin());
                 gen_asc_tabs();
             }
 
             gen_decode_tabs(LengthCodes.data(), LenCode.data(), LenBits.data(), LENS_SIZES);
             gen_decode_tabs(DistPosCodes.data(), DistCode.data(), DistBits.data(), DIST_SIZES);
+        }
 
-            out_pos = 0x1000;
+        bool try_waste_bits(unsigned int nBits, const byte*& in_ptr, const byte* in_end) {
+            if (nBits == 0) {
+                return true;
+            }
 
-            // Main decompression loop
-            while (true) {
-                unsigned int literal = decode_lit();
+            if (nBits <= extra_bits_) {
+                extra_bits_ -= nBits;
+                bit_buff_ >>= nBits;
+                return true;
+            }
 
-                if (literal >= 0x305) {
-                    // 0x305 = explicit end of stream
-                    // 0x306 = end of input (may be implicit end)
-                    break;
+            if (in_ptr >= in_end) {
+                return false;
+            }
+
+            bit_buff_ >>= extra_bits_;
+            bit_buff_ |= static_cast <u32>(*in_ptr++) << 8;
+            bit_buff_ >>= (nBits - extra_bits_);
+            extra_bits_ = extra_bits_ + 8 - nBits;
+            return true;
+        }
+
+        void write_output(byte value, byte*& out_ptr,
+                          const std::function <void(size_t, size_t)>& progress_cb) {
+            out_buff[out_pos++] = value;
+            *out_ptr++ = value;
+            total_output_++;
+
+            if (progress_cb && (total_output_ - last_progress_report_) >= PROGRESS_INTERVAL) {
+                progress_cb(total_output_, 0);
+                last_progress_report_ = total_output_;
+            }
+
+            if (out_pos >= 0x2000) {
+                std::memmove(out_buff.data(), out_buff.data() + 0x1000, out_pos - 0x1000);
+                out_pos -= 0x1000;
+                if (match_remaining_ > 0 && match_src_pos_ >= 0x1000) {
+                    match_src_pos_ -= 0x1000;
                 }
+            }
+        }
 
-                if (literal >= 0x100) {
-                    // Back-reference
-                    unsigned int rep_length = literal - 0xFE;
-                    unsigned int distance = decode_dist(rep_length);
+        result_t <stream_result> decompress(
+            byte_span input,
+            mutable_byte_span output,
+            bool input_finished,
+            const std::function <void(size_t, size_t)>& progress_cb
+        ) {
+            const byte* in_ptr = input.data();
+            const byte* in_end = input.data() + input.size();
+            byte* out_ptr = output.data();
+            byte* out_end = output.data() + output.size();
 
-                    if (distance == 0) {
-                        // End of input while reading distance - treat as end of stream
+            while (state_ != state::DONE) {
+                switch (state_) {
+                    case state::READ_HEADER:
+                        while (header_pos_ < header_.size()) {
+                            if (in_ptr >= in_end) {
+                                if (input_finished) {
+                                    return std::unexpected(error{
+                                        error_code::InputBufferUnderflow,
+                                        "PKWARE: input too short"
+                                    });
+                                }
+                                goto need_input;
+                            }
+                            header_[header_pos_++] = static_cast <u8>(*in_ptr++);
+                        }
+
+                        ctype_ = header_[0];
+                        dsize_bits_ = header_[1];
+                        bit_buff_ = header_[2];
+                        extra_bits_ = 0;
+
+                        if (dsize_bits_ < 4 || dsize_bits_ > 6) {
+                            return std::unexpected(error{
+                                error_code::CorruptData,
+                                "PKWARE: invalid dictionary size"
+                            });
+                        }
+
+                        if (ctype_ != CMP_BINARY && ctype_ != CMP_ASCII) {
+                            return std::unexpected(error{
+                                error_code::CorruptData,
+                                "PKWARE: invalid compression type"
+                            });
+                        }
+
+                        dsize_mask_ = 0xFFFFu >> (16 - dsize_bits_);
+                        init_tables();
+                        out_pos = 0x1000;
+                        state_ = state::READ_TOKEN_FLAG;
+                        break;
+
+                    case state::READ_TOKEN_FLAG: {
+                        bool is_length = (bit_buff_ & 1u) != 0;
+                        if (!try_waste_bits(1, in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        if (is_length) {
+                            state_ = state::READ_LENGTH_CODE;
+                        } else if (ctype_ == CMP_BINARY) {
+                            state_ = state::READ_LITERAL_BINARY;
+                        } else {
+                            state_ = state::READ_LITERAL_ASCII_START;
+                        }
                         break;
                     }
 
-                    // Copy from ring buffer
-                    size_t src_pos = out_pos - distance;
-                    for (unsigned int i = 0; i < rep_length; i++) {
-                        write_byte(out_buff[src_pos + i]);
+                    case state::READ_LENGTH_CODE:
+                        length_code_ = LengthCodes[bit_buff_ & 0xFF];
+                        if (!try_waste_bits(LenBits[length_code_], in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        if (ExLenBits[length_code_] == 0) {
+                            unsigned int literal = LenBase[length_code_] + 0x100;
+                            if (literal >= 0x305) {
+                                state_ = state::DONE;
+                                break;
+                            }
+                            match_remaining_ = literal - 0xFE;
+                            state_ = state::READ_DISTANCE;
+                        } else {
+                            state_ = state::READ_LENGTH_EXTRA;
+                        }
+                        break;
+
+                    case state::READ_LENGTH_EXTRA: {
+                        unsigned int extra_len_bits = ExLenBits[length_code_];
+                        unsigned int extra_length = bit_buff_ & ((1u << extra_len_bits) - 1);
+                        if (!try_waste_bits(extra_len_bits, in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        unsigned int literal = LenBase[length_code_] + extra_length + 0x100;
+                        if (literal >= 0x305) {
+                            state_ = state::DONE;
+                            break;
+                        }
+                        match_remaining_ = literal - 0xFE;
+                        state_ = state::READ_DISTANCE;
+                        break;
                     }
-                } else {
-                    // Literal byte
-                    write_byte(static_cast <byte>(literal));
+
+                    case state::READ_LITERAL_BINARY:
+                        pending_literal_ = static_cast <u8>(bit_buff_ & 0xFF);
+                        if (!try_waste_bits(8, in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        state_ = state::WRITE_LITERAL;
+                        break;
+
+                    case state::READ_LITERAL_ASCII_START:
+                        if (bit_buff_ & 0xFF) {
+                            ascii_value_ = offs2C34[bit_buff_ & 0xFF];
+                            if (ascii_value_ == 0xFF) {
+                                if (bit_buff_ & 0x3F) {
+                                    state_ = state::READ_LITERAL_ASCII_4;
+                                } else {
+                                    state_ = state::READ_LITERAL_ASCII_6;
+                                }
+                            } else {
+                                state_ = state::READ_LITERAL_ASCII_FINAL;
+                            }
+                        } else {
+                            if (!try_waste_bits(8, in_ptr, in_end)) {
+                                goto need_input;
+                            }
+                            ascii_value_ = offs2EB4[bit_buff_ & 0xFF];
+                            state_ = state::READ_LITERAL_ASCII_FINAL;
+                        }
+                        break;
+
+                    case state::READ_LITERAL_ASCII_4:
+                        if (!try_waste_bits(4, in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        ascii_value_ = offs2D34[bit_buff_ & 0xFF];
+                        state_ = state::READ_LITERAL_ASCII_FINAL;
+                        break;
+
+                    case state::READ_LITERAL_ASCII_6:
+                        if (!try_waste_bits(6, in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        ascii_value_ = offs2E34[bit_buff_ & 0x7F];
+                        state_ = state::READ_LITERAL_ASCII_FINAL;
+                        break;
+
+                    case state::READ_LITERAL_ASCII_FINAL:
+                        if (!try_waste_bits(ChBitsAscWork[ascii_value_], in_ptr, in_end)) {
+                            goto need_input;
+                        }
+                        pending_literal_ = static_cast <u8>(ascii_value_);
+                        state_ = state::WRITE_LITERAL;
+                        break;
+
+                    case state::READ_DISTANCE: {
+                        unsigned int dist_pos_code = DistPosCodes[bit_buff_ & 0xFF];
+                        if (!try_waste_bits(DistBits[dist_pos_code], in_ptr, in_end)) {
+                            goto need_input;
+                        }
+
+                        unsigned int distance;
+                        if (match_remaining_ == 2) {
+                            distance = (dist_pos_code << 2) | (bit_buff_ & 0x03);
+                            if (!try_waste_bits(2, in_ptr, in_end)) {
+                                goto need_input;
+                            }
+                        } else {
+                            distance = (dist_pos_code << dsize_bits_) | (bit_buff_ & dsize_mask_);
+                            if (!try_waste_bits(dsize_bits_, in_ptr, in_end)) {
+                                goto need_input;
+                            }
+                        }
+
+                        match_src_pos_ = out_pos - (distance + 1);
+                        state_ = state::COPY_MATCH;
+                        break;
+                    }
+
+                    case state::WRITE_LITERAL:
+                        if (out_ptr >= out_end) {
+                            goto need_output;
+                        }
+                        write_output(static_cast <byte>(pending_literal_), out_ptr, progress_cb);
+                        state_ = state::READ_TOKEN_FLAG;
+                        break;
+
+                    case state::COPY_MATCH:
+                        while (match_remaining_ > 0) {
+                            if (out_ptr >= out_end) {
+                                goto need_output;
+                            }
+                            byte value = out_buff[match_src_pos_++];
+                            write_output(value, out_ptr, progress_cb);
+                            match_remaining_--;
+                        }
+                        state_ = state::READ_TOKEN_FLAG;
+                        break;
+
+                    case state::DONE:
+                        break;
                 }
             }
 
-            return static_cast <size_t>(output_ptr - output_start);
+            if (progress_cb) {
+                progress_cb(total_output_, 0);
+            }
+            return stream_result::done(
+                static_cast <size_t>(in_ptr - input.data()),
+                static_cast <size_t>(out_ptr - output.data())
+            );
+
+        need_output:
+            return stream_result::need_output(
+                static_cast <size_t>(in_ptr - input.data()),
+                static_cast <size_t>(out_ptr - output.data())
+            );
+
+        need_input:
+            if (input_finished) {
+                state_ = state::DONE;
+                if (progress_cb) {
+                    progress_cb(total_output_, 0);
+                }
+                return stream_result::done(
+                    static_cast <size_t>(in_ptr - input.data()),
+                    static_cast <size_t>(out_ptr - output.data())
+                );
+            }
+            return stream_result::need_input(
+                static_cast <size_t>(in_ptr - input.data()),
+                static_cast <size_t>(out_ptr - output.data())
+            );
         }
     };
 
@@ -458,42 +558,14 @@ namespace crate {
         mutable_byte_span output,
         bool input_finished
     ) {
-        // This decompressor requires all input at once
-        if (!input_finished) {
-            // If streaming partial data, we can't do anything yet
-            // Return 0 bytes processed, waiting for more
-            return stream_result::need_input(0, 0);
-        }
-
-        pimpl_->input_ptr = input.data();
-        pimpl_->input_end = input.data() + input.size();
-        pimpl_->output_start = output.data();
-        pimpl_->output_ptr = output.data();
-        pimpl_->output_end = output.data() + output.size();
-        pimpl_->total_expected = output.size();
-        pimpl_->last_progress_report = 0;
-
-        // Set up progress reporter if callback is set
-        if (progress_cb_) {
-            pimpl_->progress_reporter = [this](size_t written, size_t total) {
+        return pimpl_->decompress(
+            input,
+            output,
+            input_finished,
+            [this](size_t written, size_t total) {
                 report_progress(written, total);
-            };
-        } else {
-            pimpl_->progress_reporter = nullptr;
-        }
-
-        auto result = pimpl_->decompress_data();
-
-        if (!result) {
-            return std::unexpected(result.error());
-        }
-
-        // Report final progress
-        if (progress_cb_) {
-            report_progress(*result, pimpl_->total_expected);
-        }
-
-        return stream_result::done(input.size(), *result);
+            }
+        );
     }
 
     void explode_decompressor::reset() {

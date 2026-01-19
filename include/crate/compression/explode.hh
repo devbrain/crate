@@ -12,8 +12,7 @@ namespace crate {
 ///
 /// Note: This is NOT the same as ZIP's "implode" compression method 6.
 ///
-/// This decompressor requires all input data in a single call to decompress_some()
-/// with input_finished=true. Partial streaming is not supported.
+/// Streaming decompressor for PKWARE DCL Explode data.
 class CRATE_EXPORT explode_decompressor : public decompressor {
 public:
     explode_decompressor();
