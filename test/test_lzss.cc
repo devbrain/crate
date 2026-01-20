@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 #include <crate/compression/lzss.hh>
+#include "test_streaming.hh"
 #include <array>
 #include <vector>
 
@@ -78,27 +79,17 @@ TEST_SUITE("SzddLzssDecompressor") {
 
 TEST_SUITE("KwajLzssDecompressor") {
     TEST_CASE("Decompress all literals") {
-        // Bit pattern: 1=literal, each literal followed by 8 bits
-        std::vector<u8> data = {
-            0xFF,  // 8 literal flags (all 1s)
-            'H',   // literal 1
-            0xFF,  // 8 more flags (will read next byte as literal)
-            'e',
-            0xFF,
-            'l',
-            0xFF,
-            'l',
-            0xFF,
-            'o'
-        };
+        std::vector <u8> expected = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'};
+        auto data = crate::test::make_kwaj_lzss_literals(expected);
 
         kwaj_lzss_decompressor decompressor;
-        std::array<u8, 16> output{};
+        std::array <u8, 16> output{};
 
-        // This will attempt to read bits, starting with LSB
         auto result = decompressor.decompress(data, output);
-        // The exact output depends on bit ordering
         REQUIRE(result.has_value());
+        CHECK(*result == expected.size());
+        std::vector <u8> actual(output.begin(), output.begin() + *result);
+        CHECK(actual == expected);
     }
 
     TEST_CASE("Reset clears window") {
@@ -114,5 +105,20 @@ TEST_SUITE("KwajLzssDecompressor") {
         auto result = decompressor.decompress(data, output);
         REQUIRE(result.has_value());
         CHECK(*result == 0);
+    }
+
+    TEST_CASE("Streaming literals") {
+        std::vector <u8> expected = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'};
+        auto compressed = crate::test::make_kwaj_lzss_literals(expected);
+
+        crate::test::streaming_test_config config;
+        config.name = "KWAJ LZSS literals";
+        config.compressed = compressed;
+        config.expected = expected;
+        config.output_buffer_sizes = {1, 2, 7};
+
+        crate::test::run_streaming_tests(config, []() {
+            return std::make_unique <kwaj_lzss_decompressor>();
+        });
     }
 }

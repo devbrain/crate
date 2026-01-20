@@ -127,6 +127,7 @@ namespace crate {
             READ_LITERAL_ASCII_6,
             READ_LITERAL_ASCII_FINAL,
             READ_DISTANCE,
+            READ_DISTANCE_EXTRA,
             WRITE_LITERAL,
             COPY_MATCH,
             DONE
@@ -137,7 +138,7 @@ namespace crate {
         std::array <u8, 3> header_{};
         size_t header_pos_ = 0;
 
-        // Bit buffer (16-bit, LSB first)
+        // Bit buffer (LSB first)
         u32 bit_buff_ = 0;
         unsigned int extra_bits_ = 0;
 
@@ -162,6 +163,7 @@ namespace crate {
         // Decode state
         unsigned int length_code_ = 0;
         unsigned int ascii_value_ = 0;
+        unsigned int dist_pos_code_ = 0;
         u8 pending_literal_ = 0;
 
         size_t match_remaining_ = 0;
@@ -184,6 +186,7 @@ namespace crate {
             out_buff.fill(0);
             length_code_ = 0;
             ascii_value_ = 0;
+            dist_pos_code_ = 0;
             pending_literal_ = 0;
             match_remaining_ = 0;
             match_src_pos_ = 0;
@@ -466,22 +469,20 @@ namespace crate {
                         break;
 
                     case state::READ_DISTANCE: {
-                        unsigned int dist_pos_code = DistPosCodes[bit_buff_ & 0xFF];
-                        if (!try_waste_bits(DistBits[dist_pos_code], in_ptr, in_end)) {
+                        dist_pos_code_ = DistPosCodes[bit_buff_ & 0xFF];
+                        if (!try_waste_bits(DistBits[dist_pos_code_], in_ptr, in_end)) {
                             goto need_input;
                         }
+                        state_ = state::READ_DISTANCE_EXTRA;
+                        break;
+                    }
 
-                        unsigned int distance;
-                        if (match_remaining_ == 2) {
-                            distance = (dist_pos_code << 2) | (bit_buff_ & 0x03);
-                            if (!try_waste_bits(2, in_ptr, in_end)) {
-                                goto need_input;
-                            }
-                        } else {
-                            distance = (dist_pos_code << dsize_bits_) | (bit_buff_ & dsize_mask_);
-                            if (!try_waste_bits(dsize_bits_, in_ptr, in_end)) {
-                                goto need_input;
-                            }
+                    case state::READ_DISTANCE_EXTRA: {
+                        unsigned int extra_bits = (match_remaining_ == 2) ? 2u : dsize_bits_;
+                        unsigned int distance = (dist_pos_code_ << extra_bits)
+                            | (bit_buff_ & ((1u << extra_bits) - 1));
+                        if (!try_waste_bits(extra_bits, in_ptr, in_end)) {
+                            goto need_input;
                         }
 
                         match_src_pos_ = out_pos - (distance + 1);

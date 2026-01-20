@@ -237,4 +237,44 @@ generate_lzss_with_matches(size_t literal_blocks, size_t match_blocks) {
     return {compressed, expected};
 }
 
+struct lsb_bit_writer {
+    std::vector <u8> data;
+    u8 current = 0;
+    unsigned bit_pos = 0;
+
+    void push_bit(unsigned bit) {
+        if (bit) {
+            current |= static_cast <u8>(1u << bit_pos);
+        }
+        bit_pos++;
+        if (bit_pos == 8) {
+            data.push_back(current);
+            current = 0;
+            bit_pos = 0;
+        }
+    }
+
+    void push_bits(u32 value, unsigned count) {
+        for (unsigned i = 0; i < count; i++) {
+            push_bit((value >> i) & 1u);
+        }
+    }
+
+    std::vector <u8> finish() {
+        if (bit_pos > 0) {
+            data.push_back(current);
+        }
+        return data;
+    }
+};
+
+inline std::vector <u8> make_kwaj_lzss_literals(const std::vector <u8>& literals) {
+    lsb_bit_writer writer;
+    for (u8 value : literals) {
+        writer.push_bit(1);
+        writer.push_bits(value, 8);
+    }
+    return writer.finish();
+}
+
 } // namespace crate::test

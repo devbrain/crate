@@ -1,7 +1,6 @@
 #pragma once
 
 #include <crate/core/decompressor.hh>
-#include <crate/core/bitstream.hh>
 #include <crate/core/types.hh>
 
 namespace crate {
@@ -22,6 +21,8 @@ public:
         mutable_byte_span output,
         bool input_finished = false
     ) override;
+
+    [[nodiscard]] bool supports_streaming() const override { return true; }
 
     void reset() override;
 
@@ -68,61 +69,47 @@ public:
         byte_span input,
         mutable_byte_span output,
         bool input_finished = false
-    ) override {
-        // KWAJ LZSS decompression requires all input data at once
-        if (!input_finished) {
-            return stream_result::need_input(0, 0);
-        }
+    ) override;
 
-        lsb_bitstream bs(input);
-        size_t out_pos = 0;
-
-        while (!bs.at_end() && out_pos < output.size()) {
-            auto is_literal = bs.read_bit();
-            if (!is_literal) {
-                if (out_pos > 0)
-                    break;  // EOF after data
-                return std::unexpected(is_literal.error());
-            }
-
-            if (*is_literal) {
-                auto value = bs.read_byte();
-                if (!value)
-                    return std::unexpected(value.error());
-                output[out_pos++] = *value;
-                window_[window_pos_++ & WINDOW_MASK] = *value;
-            } else {
-                // Read match length and offset
-                auto len_bits = bs.read_bits(4);
-                if (!len_bits)
-                    return std::unexpected(len_bits.error());
-                unsigned match_len = *len_bits + 3;
-
-                auto off_bits = bs.read_bits(12);
-                if (!off_bits)
-                    return std::unexpected(off_bits.error());
-                unsigned match_off = *off_bits;
-
-                for (unsigned i = 0; i < match_len && out_pos < output.size(); i++) {
-                    u8 value = window_[(window_pos_ - match_off - 1) & WINDOW_MASK];
-                    output[out_pos++] = value;
-                    window_[window_pos_++ & WINDOW_MASK] = value;
-                }
-            }
-        }
-
-        return stream_result::done(input.size(), out_pos);
-    }
+    [[nodiscard]] bool supports_streaming() const override { return true; }
 
     void reset() override { init_state(); }
 
 private:
+    bool try_read_bits(const byte*& ptr, const byte* end, unsigned n, u32& out);
+
+    enum class state : u8 {
+        READ_FLAG,
+        READ_LITERAL,
+        WRITE_LITERAL,
+        READ_MATCH_LEN,
+        READ_MATCH_OFF,
+        COPY_MATCH,
+        DONE
+    };
+
     void init_state() {
         window_pos_ = 0;
         std::fill(window_.begin(), window_.end(), 0);
+        state_ = state::READ_FLAG;
+        bit_buffer_ = 0;
+        bits_left_ = 0;
+        pending_literal_ = 0;
+        match_length_ = 0;
+        match_offset_ = 0;
+        match_pos_ = 0;
+        match_remaining_ = 0;
     }
-    std::array<u8, WINDOW_SIZE> window_{};
+    std::array <u8, WINDOW_SIZE> window_{};
     u32 window_pos_ = 0;
+    state state_ = state::READ_FLAG;
+    u64 bit_buffer_ = 0;
+    unsigned bits_left_ = 0;
+    u8 pending_literal_ = 0;
+    u8 match_length_ = 0;
+    u16 match_offset_ = 0;
+    u32 match_pos_ = 0;
+    u16 match_remaining_ = 0;
 };
 
 }  // namespace crate

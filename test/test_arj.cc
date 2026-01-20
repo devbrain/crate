@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/formats/arj.hh>
 #include <crate/core/crc.hh>
+#include <crate/core/system.hh>
 #include <crate/compression/arj_lz.hh>
 #include <crate/compression/lzh.hh>
 #include <crate/test_config.hh>
@@ -199,6 +200,24 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(compare_extraction(*expected, *actual));
+    }
+
+    TEST_CASE("Streaming extract_to - LZH") {
+        auto archive_path = CORPUS_DIR / "method1.arj";
+        REQUIRE(std::filesystem::exists(archive_path));
+
+        auto archive = arj_archive::open(archive_path);
+        REQUIRE(archive.has_value());
+
+        const auto& entry = (*archive)->files()[0];
+        auto expected = (*archive)->extract(entry);
+        REQUIRE(expected.has_value());
+
+        vector_output_stream output;
+        auto result = (*archive)->extract_to(entry, output);
+        REQUIRE(result.has_value());
+        CHECK(*result == expected->size());
+        CHECK(compare_extraction(*expected, output.data()));
     }
 
     TEST_CASE("Method 2 - LZH") {

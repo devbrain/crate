@@ -41,8 +41,8 @@ namespace kwaj {
 /// Decompresses files compressed with MS-DOS COMPRESS.EXE (KWAJ variant).
 /// Supports multiple compression methods: none, XOR, SZDD/LZSS, LZH, and MSZIP.
 ///
-/// This decompressor requires all input data in a single call to decompress_some()
-/// with input_finished=true. Partial streaming is not supported.
+/// Streaming decompressor that buffers the header and then decodes the payload.
+/// Some compression methods may buffer compressed data internally.
 class CRATE_EXPORT kwaj_decompressor : public decompressor {
 public:
     kwaj_decompressor();
@@ -53,6 +53,8 @@ public:
         mutable_byte_span output,
         bool input_finished = false
     ) override;
+
+    [[nodiscard]] bool supports_streaming() const override { return true; }
 
     void reset() override;
 

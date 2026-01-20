@@ -26,6 +26,13 @@ namespace crate {
         { stream.write(data) } -> std::same_as <void_result_t>;
     };
 
+    // Output stream base interface for streaming extraction
+    class CRATE_EXPORT output_stream {
+        public:
+            virtual ~output_stream() = default;
+            virtual void_result_t write(byte_span data) = 0;
+    };
+
     // Memory input stream - wraps a span of bytes
     class CRATE_EXPORT memory_input_stream {
         public:
@@ -113,12 +120,12 @@ namespace crate {
     };
 
     // Vector output stream
-    class CRATE_EXPORT vector_output_stream {
+    class CRATE_EXPORT vector_output_stream : public output_stream {
         public:
             vector_output_stream() = default;
             explicit vector_output_stream(size_t reserve) { data_.reserve(reserve); }
 
-            void_result_t write(byte_span data) {
+            void_result_t write(byte_span data) override {
                 data_.insert(data_.end(), data.begin(), data.end());
                 return {};
             }
@@ -131,7 +138,7 @@ namespace crate {
     };
 
     // File output stream
-    class CRATE_EXPORT file_output_stream {
+    class CRATE_EXPORT file_output_stream : public output_stream {
         public:
             static result_t <file_output_stream> create(const std::filesystem::path& path) {
                 // Create parent directories if needed
@@ -150,7 +157,7 @@ namespace crate {
                 return file_output_stream(std::move(file));
             }
 
-            void_result_t write(byte_span data) {
+            void_result_t write(byte_span data) override {
                 file_.write(reinterpret_cast <const char*>(data.data()),
                             static_cast <std::streamsize>(data.size()));
                 if (file_.fail()) {

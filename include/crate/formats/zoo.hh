@@ -19,6 +19,7 @@ namespace crate {
             [[nodiscard]] const std::vector <file_entry>& files() const override;
 
             result_t <byte_vector> extract(const file_entry& entry) override;
+            result_t <size_t> extract_to(const file_entry& entry, output_stream& dest) override;
 
         private:
             zoo_archive();

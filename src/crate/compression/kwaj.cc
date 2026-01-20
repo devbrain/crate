@@ -1,14 +1,64 @@
 #include <crate/compression/kwaj.hh>
 #include "crate/compression/lzss.hh"
 #include "crate/compression/mszip.hh"
+#include <algorithm>
 #include <cstring>
+#include <vector>
 
 namespace crate {
 
     struct kwaj_decompressor::impl {
+        enum class state : u8 {
+            READ_HEADER,
+            DECOMPRESS_DATA,
+            DONE
+        };
+
+        state current_state = state::READ_HEADER;
+
         szdd_lzss_decompressor szdd_lzss;
         kwaj_lzss_decompressor kwaj_lzss;
         mszip_decompressor mszip;
+
+        std::vector<u8> header_buf;
+        size_t header_bytes = 0;
+        size_t header_target = 0;
+        bool header_target_known = false;
+
+        kwaj::header header{};
+        kwaj::method method = kwaj::method::NONE;
+        size_t expected_output = 0;
+
+        std::vector<u8> pending_input;
+        size_t pending_pos = 0;
+
+        std::vector<u8> buffered_input;
+        std::vector<u8> buffered_output;
+        size_t buffered_output_pos = 0;
+        bool buffered_ready = false;
+
+        size_t total_output = 0;
+
+        void reset_state() {
+            current_state = state::READ_HEADER;
+            header_buf.clear();
+            header_bytes = 0;
+            header_target = 0;
+            header_target_known = false;
+            header = {};
+            method = kwaj::method::NONE;
+            expected_output = 0;
+            pending_input.clear();
+            pending_pos = 0;
+            buffered_input.clear();
+            buffered_output.clear();
+            buffered_output_pos = 0;
+            buffered_ready = false;
+            total_output = 0;
+            szdd_lzss.reset();
+            kwaj_lzss.reset();
+            mszip.reset();
+        }
     };
 
     kwaj_decompressor::kwaj_decompressor() : pimpl_(std::make_unique<impl>()) {}
@@ -129,75 +179,275 @@ namespace crate {
         mutable_byte_span output,
         bool input_finished
     ) {
-        // KWAJ decompression requires all input data at once
-        if (!input_finished) {
-            return stream_result::need_input(0, 0);
-        }
+        size_t total_read = 0;
+        size_t total_written = 0;
 
-        auto header_result = parse_header(input);
-        if (!header_result) return std::unexpected(header_result.error());
+        auto pending_remaining = [&]() -> size_t {
+            if (pimpl_->pending_pos >= pimpl_->pending_input.size()) {
+                pimpl_->pending_input.clear();
+                pimpl_->pending_pos = 0;
+                return 0;
+            }
+            return pimpl_->pending_input.size() - pimpl_->pending_pos;
+        };
 
-        const auto& header = *header_result;
+        auto pending_span = [&]() -> byte_span {
+            size_t remaining = pending_remaining();
+            if (remaining == 0) {
+                return {};
+            }
+            return byte_span{
+                pimpl_->pending_input.data() + pimpl_->pending_pos,
+                remaining
+            };
+        };
 
-        if (header.data_offset >= input.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
-        }
+        auto consume_pending = [&](size_t bytes) {
+            pimpl_->pending_pos += bytes;
+            pending_remaining();
+        };
 
-        byte_span compressed = input.subspan(header.data_offset);
-        size_t result_size = 0;
+        auto output_remaining = [&]() -> size_t {
+            return output.size() - total_written;
+        };
 
-        switch (static_cast<kwaj::method>(header.comp_method)) {
-            case kwaj::NONE:
-                if (output.size() < compressed.size()) {
-                    return std::unexpected(error{error_code::OutputBufferOverflow});
+        auto note_progress = [&](size_t bytes) {
+            if (bytes == 0) {
+                return;
+            }
+            pimpl_->total_output += bytes;
+            report_progress(pimpl_->total_output, pimpl_->expected_output);
+        };
+
+        while (true) {
+            switch (pimpl_->current_state) {
+                case impl::state::READ_HEADER: {
+                    if (pimpl_->header_bytes >= 8) {
+                        if (std::memcmp(pimpl_->header_buf.data(), kwaj::SIGNATURE1, 4) != 0 ||
+                            std::memcmp(pimpl_->header_buf.data() + 4, kwaj::SIGNATURE2_PART, 3) != 0) {
+                            return std::unexpected(error{
+                                error_code::InvalidSignature,
+                                "Not a valid KWAJ file"
+                            });
+                        }
+
+                        u8 variant = pimpl_->header_buf[7];
+                        if (variant != 0x33 && variant != 0xD1) {
+                            return std::unexpected(error{
+                                error_code::InvalidSignature,
+                                "Unknown KWAJ variant"
+                            });
+                        }
+                    }
+
+                    if (!pimpl_->header_target_known && pimpl_->header_bytes >= 14) {
+                        pimpl_->header_target = read_u16_le(pimpl_->header_buf.data() + 10);
+                        pimpl_->header_target_known = true;
+                    }
+
+                    size_t header_need = 14;
+                    if (pimpl_->header_target_known && pimpl_->header_target > header_need) {
+                        header_need = pimpl_->header_target;
+                    }
+
+                    if (pimpl_->header_bytes >= header_need) {
+                        auto header_result = parse_header(byte_span{
+                            pimpl_->header_buf.data(),
+                            pimpl_->header_bytes
+                        });
+                        if (!header_result) {
+                            return std::unexpected(header_result.error());
+                        }
+
+                        pimpl_->header = *header_result;
+                        pimpl_->method = static_cast<kwaj::method>(pimpl_->header.comp_method);
+                        pimpl_->expected_output = pimpl_->header.decompressed_len > 0
+                            ? pimpl_->header.decompressed_len
+                            : pimpl_->header.uncompressed_len;
+
+                        if (pimpl_->header_target_known && pimpl_->header_bytes > pimpl_->header_target) {
+                            size_t extra = pimpl_->header_bytes - pimpl_->header_target;
+                            pimpl_->pending_input.resize(extra);
+                            std::memcpy(
+                                pimpl_->pending_input.data(),
+                                pimpl_->header_buf.data() + pimpl_->header_target,
+                                extra
+                            );
+                            pimpl_->pending_pos = 0;
+                        }
+
+                        if (input_finished && total_read >= input.size() && pimpl_->pending_input.empty()) {
+                            return std::unexpected(error{error_code::TruncatedArchive});
+                        }
+
+                        pimpl_->current_state = impl::state::DECOMPRESS_DATA;
+                        continue;
+                    }
+
+                    size_t available = input.size() - total_read;
+                    if (available == 0) {
+                        if (input_finished) {
+                            return std::unexpected(error{error_code::TruncatedArchive});
+                        }
+                        return stream_result::need_input(total_read, total_written);
+                    }
+
+                    size_t to_copy = std::min(header_need - pimpl_->header_bytes, available);
+                    pimpl_->header_buf.resize(pimpl_->header_bytes + to_copy);
+                    std::memcpy(
+                        pimpl_->header_buf.data() + pimpl_->header_bytes,
+                        input.data() + total_read,
+                        to_copy
+                    );
+                    pimpl_->header_bytes += to_copy;
+                    total_read += to_copy;
+                    continue;
                 }
-                std::memcpy(output.data(), compressed.data(), compressed.size());
-                result_size = compressed.size();
-                break;
 
-            case kwaj::XOR_FF: {
-                auto result = decompress_xor(compressed, output);
-                if (!result) return std::unexpected(result.error());
-                result_size = *result;
-                break;
+                case impl::state::DECOMPRESS_DATA: {
+                    switch (pimpl_->method) {
+                        case kwaj::NONE:
+                        case kwaj::XOR_FF: {
+                            byte_span src = pending_span();
+                            bool using_pending = !src.empty();
+                            if (!using_pending) {
+                                src = input.subspan(total_read);
+                            }
+
+                            if (src.empty()) {
+                                if (input_finished) {
+                                    pimpl_->current_state = impl::state::DONE;
+                                    return stream_result::done(total_read, total_written);
+                                }
+                                return stream_result::need_input(total_read, total_written);
+                            }
+
+                            if (output_remaining() == 0) {
+                                return stream_result::need_output(total_read, total_written);
+                            }
+
+                            size_t to_copy = std::min(src.size(), output_remaining());
+                            if (pimpl_->method == kwaj::XOR_FF) {
+                                for (size_t i = 0; i < to_copy; i++) {
+                                    output[total_written + i] = static_cast<byte>(src[i] ^ 0xFF);
+                                }
+                            } else {
+                                std::memcpy(output.data() + total_written, src.data(), to_copy);
+                            }
+
+                            if (using_pending) {
+                                consume_pending(to_copy);
+                            } else {
+                                total_read += to_copy;
+                            }
+
+                            total_written += to_copy;
+                            note_progress(to_copy);
+
+                            if (to_copy < src.size()) {
+                                return stream_result::need_output(total_read, total_written);
+                            }
+
+                            if (using_pending) {
+                                continue;
+                            }
+
+                            if (total_read >= input.size()) {
+                                if (input_finished) {
+                                    pimpl_->current_state = impl::state::DONE;
+                                    return stream_result::done(total_read, total_written);
+                                }
+                                return stream_result::need_input(total_read, total_written);
+                            }
+                            continue;
+                        }
+
+                        case kwaj::SZDD:
+                        case kwaj::MSZIP:
+                        case kwaj::LZH: {
+                            decompressor& inner = pimpl_->method == kwaj::SZDD
+                                ? static_cast<decompressor&>(pimpl_->szdd_lzss)
+                                : (pimpl_->method == kwaj::MSZIP
+                                    ? static_cast<decompressor&>(pimpl_->mszip)
+                                    : static_cast<decompressor&>(pimpl_->kwaj_lzss));
+
+                            byte_span src = pending_span();
+                            bool using_pending = !src.empty();
+                            if (!using_pending) {
+                                src = input.subspan(total_read);
+                            }
+
+                            bool inner_finished = input_finished && !using_pending;
+                            if (src.empty() && !inner_finished) {
+                                return stream_result::need_input(total_read, total_written);
+                            }
+
+                            if (output_remaining() == 0) {
+                                return stream_result::need_output(total_read, total_written);
+                            }
+
+                            auto result = inner.decompress_some(
+                                src,
+                                output.subspan(total_written),
+                                inner_finished
+                            );
+                            if (!result) {
+                                return std::unexpected(result.error());
+                            }
+
+                            if (using_pending) {
+                                consume_pending(result->bytes_read);
+                            } else {
+                                total_read += result->bytes_read;
+                            }
+
+                            total_written += result->bytes_written;
+                            note_progress(result->bytes_written);
+
+                            if (result->finished()) {
+                                pimpl_->current_state = impl::state::DONE;
+                                return stream_result::done(total_read, total_written);
+                            }
+
+                            if (result->status == decode_status::needs_more_output) {
+                                return stream_result::need_output(total_read, total_written);
+                            }
+
+                            if (result->status == decode_status::needs_more_input) {
+                                if (using_pending && pending_remaining() == 0) {
+                                    continue;
+                                }
+                                if (!using_pending && total_read >= input.size()) {
+                                    if (input_finished) {
+                                        return stream_result{
+                                            total_read,
+                                            total_written,
+                                            decode_status::needs_more_input
+                                        };
+                                    }
+                                    return stream_result::need_input(total_read, total_written);
+                                }
+                            }
+
+                            return stream_result{total_read, total_written, result->status};
+                        }
+
+                        default:
+                            return std::unexpected(error{
+                                error_code::UnsupportedCompression,
+                                "Unknown KWAJ compression method"
+                            });
+                    }
+                }
+
+                case impl::state::DONE:
+                    return stream_result::done(total_read, total_written);
             }
-
-            case kwaj::SZDD: {
-                auto result = decompress_szdd(compressed, output, header.decompressed_len);
-                if (!result) return std::unexpected(result.error());
-                result_size = *result;
-                break;
-            }
-
-            case kwaj::LZH: {
-                auto result = decompress_lzh(compressed, output, header.decompressed_len);
-                if (!result) return std::unexpected(result.error());
-                result_size = *result;
-                break;
-            }
-
-            case kwaj::MSZIP: {
-                auto result = decompress_mszip(compressed, output, header.decompressed_len);
-                if (!result) return std::unexpected(result.error());
-                result_size = *result;
-                break;
-            }
-
-            default:
-                return std::unexpected(error{
-                    error_code::UnsupportedCompression,
-                    "Unknown KWAJ compression method"
-                });
         }
-
-        report_progress(result_size, header.decompressed_len);
-        return stream_result::done(input.size(), result_size);
     }
 
     void kwaj_decompressor::reset() {
-        pimpl_->szdd_lzss.reset();
-        pimpl_->kwaj_lzss.reset();
-        pimpl_->mszip.reset();
+        pimpl_->reset_state();
     }
 
     result_t<size_t> kwaj_decompressor::decompress_xor(byte_span data, mutable_byte_span output) {

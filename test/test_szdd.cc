@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/compression/szdd.hh>
 #include <crate/compression/lzss.hh>
+#include <crate/core/system.hh>
 #include <crate/test_config.hh>
 #include "test_streaming.hh"
 #include <array>
@@ -289,6 +290,20 @@ TEST_SUITE("SzddFullStreaming") {
         };
         data.insert(data.end(), lzss_content.begin(), lzss_content.end());
         return data;
+    }
+
+    TEST_CASE("decompress_stream helper") {
+        auto [lzss_content, expected] = generate_lzss_literals("Stream SZDD");
+        auto data = make_szdd_data(lzss_content, static_cast<u32>(expected.size()));
+
+        memory_input_stream input(byte_span{data});
+        vector_output_stream output;
+        szdd_decompressor decompressor;
+
+        auto result = decompressor.decompress_stream(input, output);
+        REQUIRE(result.has_value());
+        CHECK(*result == expected.size());
+        CHECK(output.data() == expected);
     }
 
     TEST_CASE("Full streaming - standard header with chunked input") {

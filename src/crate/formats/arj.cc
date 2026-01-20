@@ -126,6 +126,27 @@ namespace crate {
     const std::vector <file_entry>& arj_archive::files() const { return m_pimpl->files_; }
 
     result_t <byte_vector> arj_archive::extract(const file_entry& entry) {
+        vector_output_stream output(entry.uncompressed_size);
+        auto result = extract_to(entry, output);
+        if (!result) return std::unexpected(result.error());
+        return output.take();
+    }
+
+    result_t <size_t> arj_archive::extract_to(const file_entry& entry, output_stream& dest) {
+        struct crc_output_stream final : output_stream {
+            explicit crc_output_stream(output_stream& dest_stream)
+                : dest(dest_stream) {
+            }
+
+            void_result_t write(byte_span data) override {
+                crc.update(data);
+                return dest.write(data);
+            }
+
+            output_stream& dest;
+            crc_32 crc;
+        };
+
         // Find the member by index
         if (entry.folder_index >= m_pimpl->members_.size()) {
             return std::unexpected(error{error_code::FileNotInArchive});
@@ -134,7 +155,7 @@ namespace crate {
         const auto& member = m_pimpl->members_[entry.folder_index];
 
         if (member.file_type == arj::DIRECTORY) {
-            return byte_vector{}; // Directories have no content
+            return 0;
         }
 
         if (member.flags & arj::GARBLED) {
@@ -150,9 +171,9 @@ namespace crate {
         }
 
         byte_span compressed(m_pimpl->data_.data() + entry.folder_offset, member.compressed_size);
-
-        // Decompress based on method
-        byte_vector output(member.original_size);
+        memory_input_stream input(compressed);
+        crc_output_stream crc_dest(dest);
+        size_t written = 0;
 
         switch (member.method) {
             case arj::STORED: {
@@ -162,7 +183,9 @@ namespace crate {
                         "Stored data size mismatch"
                     });
                 }
-                std::copy(compressed.begin(), compressed.end(), output.begin());
+                auto write = crc_dest.write(compressed);
+                if (!write) return std::unexpected(write.error());
+                written = compressed.size();
                 break;
             }
 
@@ -172,9 +195,9 @@ namespace crate {
                 // LZH (LH6 or LH7)
                 lzh_format fmt = (member.min_version == 51) ? lzh_format::LH7 : lzh_format::LH6;
                 lzh_decompressor decompressor(fmt);
-                auto result = decompressor.decompress(compressed, output);
+                auto result = decompressor.decompress_stream(input, crc_dest, member.original_size);
                 if (!result) return std::unexpected(result.error());
-                output.resize(*result);
+                written = *result;
                 break;
             }
 
@@ -182,9 +205,9 @@ namespace crate {
                 // Custom LZ77
                 bool old_format = (member.archiver_version == 1);
                 arj_method4_decompressor decompressor(old_format);
-                auto result = decompressor.decompress(compressed, output);
+                auto result = decompressor.decompress_stream(input, crc_dest, member.original_size);
                 if (!result) return std::unexpected(result.error());
-                output.resize(*result);
+                written = *result;
                 break;
             }
 
@@ -196,8 +219,7 @@ namespace crate {
         }
 
         // Verify CRC
-        u32 crc = eval_crc_32(output);
-        if (crc != member.crc) {
+        if (crc_dest.crc.finalize() != member.crc) {
             return std::unexpected(error{
                 error_code::InvalidChecksum,
                 "CRC mismatch"
@@ -206,10 +228,10 @@ namespace crate {
 
         // Report byte-level progress
         if (byte_progress_cb_) {
-            byte_progress_cb_(entry, output.size(), output.size());
+            byte_progress_cb_(entry, written, member.original_size);
         }
 
-        return output;
+        return written;
     }
 
    // const arj::main_header& arj_archive::main_header() const { return m_pimpl->main_header_; }

@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 #include <crate/compression/explode.hh>
+#include <crate/core/system.hh>
 #include <crate/test_config.hh>
 #include "test_streaming.hh"
 #include <filesystem>
@@ -31,8 +32,8 @@ TEST_SUITE("ExplodeDecompressor") {
     }
 
     TEST_CASE("Decompress small file") {
-        auto compressed = read_file(test::pkware_dir() / "small.imploded");
-        auto expected = read_file(test::pkware_dir() / "small.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "small.imploded");
+        auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -51,8 +52,8 @@ TEST_SUITE("ExplodeDecompressor") {
     }
 
     TEST_CASE("Decompress medium file") {
-        auto compressed = read_file(test::pkware_dir() / "medium.imploded");
-        auto expected = read_file(test::pkware_dir() / "medium.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "medium.imploded");
+        auto expected = read_file(::test::pkware_dir() / "medium.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -71,8 +72,8 @@ TEST_SUITE("ExplodeDecompressor") {
     }
 
     TEST_CASE("Decompress large file") {
-        auto compressed = read_file(test::pkware_dir() / "large.imploded");
-        auto expected = read_file(test::pkware_dir() / "large.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "large.imploded");
+        auto expected = read_file(::test::pkware_dir() / "large.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -91,8 +92,8 @@ TEST_SUITE("ExplodeDecompressor") {
     }
 
     TEST_CASE("Decompress binary file") {
-        auto compressed = read_file(test::pkware_dir() / "binary.imploded");
-        auto expected = read_file(test::pkware_dir() / "binary.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "binary.imploded");
+        auto expected = read_file(::test::pkware_dir() / "binary.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -111,8 +112,8 @@ TEST_SUITE("ExplodeDecompressor") {
     }
 
     TEST_CASE("Decompress file without explicit end marker") {
-        auto compressed = read_file(test::pkware_dir() / "no-explicit-end.imploded");
-        auto expected = read_file(test::pkware_dir() / "no-explicit-end.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "no-explicit-end.imploded");
+        auto expected = read_file(::test::pkware_dir() / "no-explicit-end.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -128,6 +129,25 @@ TEST_SUITE("ExplodeDecompressor") {
 
         output.resize(*result);
         CHECK(output == expected);
+    }
+
+    TEST_CASE("decompress_stream helper") {
+        auto compressed = read_file(::test::pkware_dir() / "small.imploded");
+        auto expected = read_file(::test::pkware_dir() / "small.decomp");
+
+        if (compressed.empty() || expected.empty()) {
+            MESSAGE("Test data not found, skipping");
+            return;
+        }
+
+        memory_input_stream input(byte_span{compressed});
+        vector_output_stream output;
+        explode_decompressor decompressor;
+
+        auto result = decompressor.decompress_stream(input, output, expected.size());
+        REQUIRE(result.has_value());
+        CHECK(*result == expected.size());
+        CHECK(output.data() == expected);
     }
 
     TEST_CASE("Invalid dictionary size") {
@@ -162,8 +182,8 @@ TEST_SUITE("ExplodeDecompressor") {
 
 TEST_SUITE("ExplodeStreaming") {
     TEST_CASE("Streaming small file") {
-        auto compressed = read_file(test::pkware_dir() / "small.imploded");
-        auto expected = read_file(test::pkware_dir() / "small.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "small.imploded");
+        auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -182,8 +202,8 @@ TEST_SUITE("ExplodeStreaming") {
     }
 
     TEST_CASE("Streaming implicit end") {
-        auto compressed = read_file(test::pkware_dir() / "no-explicit-end.imploded");
-        auto expected = read_file(test::pkware_dir() / "no-explicit-end.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "no-explicit-end.imploded");
+        auto expected = read_file(::test::pkware_dir() / "no-explicit-end.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -201,8 +221,8 @@ TEST_SUITE("ExplodeStreaming") {
     }
 
     TEST_CASE("Streaming medium file") {
-        auto compressed = read_file(test::pkware_dir() / "medium.imploded");
-        auto expected = read_file(test::pkware_dir() / "medium.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "medium.imploded");
+        auto expected = read_file(::test::pkware_dir() / "medium.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");
@@ -221,8 +241,8 @@ TEST_SUITE("ExplodeStreaming") {
     }
 
     TEST_CASE("Streaming large file") {
-        auto compressed = read_file(test::pkware_dir() / "large.imploded");
-        auto expected = read_file(test::pkware_dir() / "large.decomp");
+        auto compressed = read_file(::test::pkware_dir() / "large.imploded");
+        auto expected = read_file(::test::pkware_dir() / "large.decomp");
 
         if (compressed.empty() || expected.empty()) {
             MESSAGE("Test data not found, skipping");

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/formats/zoo.hh>
 #include <crate/core/crc.hh>
+#include <crate/core/system.hh>
 #include <crate/test_config.hh>
 #include <fstream>
 #include <cstring>
@@ -85,6 +86,25 @@ TEST_SUITE("ZooArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(compare_data(expected, *actual));
+    }
+
+    TEST_CASE("Streaming extract_to - Stored") {
+        auto archive_path = CORPUS_DIR / "store.zoo";
+        REQUIRE(std::filesystem::exists(archive_path));
+
+        auto expected = read_file(LICENSE_FILE);
+        REQUIRE(expected.size() == 11357);
+
+        auto archive = zoo_archive::open(archive_path);
+        REQUIRE(archive.has_value());
+        REQUIRE((*archive)->files().size() >= 1);
+
+        const auto& entry = (*archive)->files()[0];
+        vector_output_stream output(entry.uncompressed_size);
+        auto result = (*archive)->extract_to(entry, output);
+        REQUIRE(result.has_value());
+        CHECK(*result == expected.size());
+        CHECK(compare_data(expected, output.data()));
     }
 
     TEST_CASE("Method 1 - LZW (default)") {

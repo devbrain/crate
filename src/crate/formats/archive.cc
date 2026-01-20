@@ -14,14 +14,24 @@ namespace crate {
         return static_cast <int>(compression_ratio() * 100.0);
     }
 
-    void_result_t archive::extract(const file_entry& entry, const std::filesystem::path& dest) {
+    result_t <size_t> archive::extract_to(const file_entry& entry, output_stream& dest) {
         auto data = extract(entry);
         if (!data) return std::unexpected(data.error());
 
+        auto write = dest.write(*data);
+        if (!write) return std::unexpected(write.error());
+
+        return data->size();
+    }
+
+    void_result_t archive::extract(const file_entry& entry, const std::filesystem::path& dest) {
         auto output = file_output_stream::create(dest);
         if (!output) return std::unexpected(output.error());
 
-        return output->write(*data);
+        auto result = extract_to(entry, *output);
+        if (!result) return std::unexpected(result.error());
+
+        return {};
     }
 
     void_result_t archive::extract_all(const std::filesystem::path& dest_dir) {

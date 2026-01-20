@@ -17,6 +17,8 @@ public:
         bool input_finished = false
     ) override;
 
+    [[nodiscard]] bool supports_streaming() const override { return true; }
+
     void reset() override;
 
 private:
@@ -37,6 +39,8 @@ public:
         bool input_finished = false
     ) override;
 
+    [[nodiscard]] bool supports_streaming() const override { return true; }
+
     void reset() override;
 
 private:
@@ -56,6 +60,8 @@ public:
         mutable_byte_span output,
         bool input_finished = false
     ) override;
+
+    [[nodiscard]] bool supports_streaming() const override { return true; }
 
     void reset() override;
 

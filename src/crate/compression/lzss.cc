@@ -174,4 +174,140 @@ void szdd_lzss_decompressor::init_state() {
     started_ = false;
 }
 
+bool kwaj_lzss_decompressor::try_read_bits(const byte*& ptr, const byte* end, unsigned n, u32& out) {
+    while (bits_left_ < n) {
+        if (ptr >= end) {
+            return false;
+        }
+        bit_buffer_ |= static_cast <u64>(*ptr++) << bits_left_;
+        bits_left_ += 8;
+    }
+
+    out = static_cast <u32>(bit_buffer_ & ((1ULL << n) - 1));
+    bit_buffer_ >>= n;
+    bits_left_ -= n;
+    return true;
+}
+
+result_t<stream_result> kwaj_lzss_decompressor::decompress_some(
+    byte_span input,
+    mutable_byte_span output,
+    bool input_finished
+) {
+    const byte* in_ptr = input.data();
+    const byte* in_end = input.data() + input.size();
+    byte* out_ptr = output.data();
+    byte* out_end = output.data() + output.size();
+
+    while (state_ != state::DONE) {
+        switch (state_) {
+            case state::READ_FLAG: {
+                u32 flag = 0;
+                if (!try_read_bits(in_ptr, in_end, 1, flag)) {
+                    if (input_finished) {
+                        state_ = state::DONE;
+                        return stream_result::done(
+                            static_cast <size_t>(in_ptr - input.data()),
+                            static_cast <size_t>(out_ptr - output.data())
+                        );
+                    }
+                    return stream_result::need_input(
+                        static_cast <size_t>(in_ptr - input.data()),
+                        static_cast <size_t>(out_ptr - output.data())
+                    );
+                }
+                state_ = flag ? state::READ_LITERAL : state::READ_MATCH_LEN;
+                break;
+            }
+
+            case state::READ_LITERAL: {
+                u32 value = 0;
+                if (!try_read_bits(in_ptr, in_end, 8, value)) {
+                    if (input_finished) {
+                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                    }
+                    return stream_result::need_input(
+                        static_cast <size_t>(in_ptr - input.data()),
+                        static_cast <size_t>(out_ptr - output.data())
+                    );
+                }
+                pending_literal_ = static_cast <u8>(value);
+                state_ = state::WRITE_LITERAL;
+                break;
+            }
+
+            case state::WRITE_LITERAL:
+                if (out_ptr >= out_end) {
+                    return stream_result::need_output(
+                        static_cast <size_t>(in_ptr - input.data()),
+                        static_cast <size_t>(out_ptr - output.data())
+                    );
+                }
+                *out_ptr++ = pending_literal_;
+                window_[window_pos_++ & WINDOW_MASK] = pending_literal_;
+                state_ = state::READ_FLAG;
+                break;
+
+            case state::READ_MATCH_LEN: {
+                u32 len_bits = 0;
+                if (!try_read_bits(in_ptr, in_end, 4, len_bits)) {
+                    if (input_finished) {
+                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                    }
+                    return stream_result::need_input(
+                        static_cast <size_t>(in_ptr - input.data()),
+                        static_cast <size_t>(out_ptr - output.data())
+                    );
+                }
+                match_length_ = static_cast <u8>(len_bits + 3);
+                state_ = state::READ_MATCH_OFF;
+                break;
+            }
+
+            case state::READ_MATCH_OFF: {
+                u32 off_bits = 0;
+                if (!try_read_bits(in_ptr, in_end, 12, off_bits)) {
+                    if (input_finished) {
+                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                    }
+                    return stream_result::need_input(
+                        static_cast <size_t>(in_ptr - input.data()),
+                        static_cast <size_t>(out_ptr - output.data())
+                    );
+                }
+                match_offset_ = static_cast <u16>(off_bits);
+                match_remaining_ = match_length_;
+                match_pos_ = (window_pos_ - match_offset_ - 1) & WINDOW_MASK;
+                state_ = state::COPY_MATCH;
+                break;
+            }
+
+            case state::COPY_MATCH:
+                while (match_remaining_ > 0) {
+                    if (out_ptr >= out_end) {
+                        return stream_result::need_output(
+                            static_cast <size_t>(in_ptr - input.data()),
+                            static_cast <size_t>(out_ptr - output.data())
+                        );
+                    }
+                    u8 value = window_[match_pos_ & WINDOW_MASK];
+                    match_pos_++;
+                    *out_ptr++ = value;
+                    window_[window_pos_++ & WINDOW_MASK] = value;
+                    match_remaining_--;
+                }
+                state_ = state::READ_FLAG;
+                break;
+
+            case state::DONE:
+                break;
+        }
+    }
+
+    return stream_result::done(
+        static_cast <size_t>(in_ptr - input.data()),
+        static_cast <size_t>(out_ptr - output.data())
+    );
+}
+
 }  // namespace crate

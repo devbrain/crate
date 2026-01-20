@@ -227,6 +227,27 @@ namespace crate {
     const std::vector <file_entry>& zoo_archive::files() const { return m_pimpl->files_; }
 
     result_t <byte_vector> zoo_archive::extract(const file_entry& entry) {
+        vector_output_stream output(entry.uncompressed_size);
+        auto result = extract_to(entry, output);
+        if (!result) return std::unexpected(result.error());
+        return output.take();
+    }
+
+    result_t <size_t> zoo_archive::extract_to(const file_entry& entry, output_stream& dest) {
+        struct crc_output_stream final : output_stream {
+            explicit crc_output_stream(output_stream& dest_stream)
+                : dest(dest_stream) {
+            }
+
+            void_result_t write(byte_span data) override {
+                crc.update(data);
+                return dest.write(data);
+            }
+
+            output_stream& dest;
+            crc_16_ibm crc;
+        };
+
         if (entry.folder_index >= m_pimpl->members_.size()) {
             return std::unexpected(error{error_code::FileNotInArchive});
         }
@@ -237,27 +258,33 @@ namespace crate {
         }
 
         byte_span compressed(m_pimpl->data_.data() + member.offset, member.compressed_size);
-        byte_vector output;
+        memory_input_stream input(compressed);
+        crc_output_stream crc_dest(dest);
+        size_t written = 0;
 
         switch (member.method) {
-            case zoo::STORED:
-                output.assign(compressed.begin(), compressed.end());
+            case zoo::STORED: {
+                auto write = crc_dest.write(compressed);
+                if (!write) return std::unexpected(write.error());
+                written = compressed.size();
                 break;
+            }
 
             case zoo::LZW: {
                 zoo::zoo_lzw_decoder decoder;
                 auto result = decoder.decompress(compressed, member.original_size);
                 if (!result) return std::unexpected(result.error());
-                output = std::move(*result);
+                auto write = crc_dest.write(*result);
+                if (!write) return std::unexpected(write.error());
+                written = result->size();
                 break;
             }
 
             case zoo::LH5: {
                 lzh_decompressor decomp(lzh_format::LH5);
-                output.resize(member.original_size);
-                auto result = decomp.decompress(compressed, output);
+                auto result = decomp.decompress_stream(input, crc_dest, member.original_size);
                 if (!result) return std::unexpected(result.error());
-                output.resize(*result);
+                written = *result;
                 break;
             }
 
@@ -269,17 +296,16 @@ namespace crate {
         }
 
         // Verify CRC (using CRC-16-IBM)
-        u16 crc = eval_crc16_ibm(output);
-        if (crc != member.crc16) {
+        if (crc_dest.crc.finalize() != member.crc16) {
             return std::unexpected(error{error_code::InvalidChecksum, "CRC-16 mismatch"});
         }
 
         // Report byte-level progress
         if (byte_progress_cb_) {
-            byte_progress_cb_(entry, output.size(), output.size());
+            byte_progress_cb_(entry, written, member.original_size);
         }
 
-        return output;
+        return written;
     }
 
     void_result_t zoo_archive::parse() {

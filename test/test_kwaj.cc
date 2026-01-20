@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 #include <crate/compression/kwaj.hh>
+#include <crate/core/system.hh>
 #include <crate/test_config.hh>
+#include "test_streaming.hh"
 #include <array>
 #include <vector>
 
@@ -22,6 +24,47 @@ static result_t<byte_vector> decompress_kwaj(byte_span data) {
 
     output.resize(*result);
     return output;
+}
+
+static void append_u16_le(std::vector<u8>& data, u16 value) {
+    data.push_back(static_cast<u8>(value & 0xFF));
+    data.push_back(static_cast<u8>((value >> 8) & 0xFF));
+}
+
+static void append_u32_le(std::vector<u8>& data, u32 value) {
+    data.push_back(static_cast<u8>(value & 0xFF));
+    data.push_back(static_cast<u8>((value >> 8) & 0xFF));
+    data.push_back(static_cast<u8>((value >> 16) & 0xFF));
+    data.push_back(static_cast<u8>((value >> 24) & 0xFF));
+}
+
+static std::vector<u8> make_kwaj_data(
+    kwaj::method method,
+    const std::vector<u8>& payload,
+    u32 decompressed_len
+) {
+    std::vector<u8> data = {
+        'K', 'W', 'A', 'J',
+        0x88, 0xF0, 0x27, 0x33
+    };
+
+    u16 flags = 0;
+    u16 data_offset = 14;
+    if (decompressed_len > 0) {
+        flags |= kwaj::HAS_DECOMPRESSED_LEN;
+        data_offset += 4;
+    }
+
+    append_u16_le(data, static_cast<u16>(method));
+    append_u16_le(data, data_offset);
+    append_u16_le(data, flags);
+
+    if (flags & kwaj::HAS_DECOMPRESSED_LEN) {
+        append_u32_le(data, decompressed_len);
+    }
+
+    data.insert(data.end(), payload.begin(), payload.end());
+    return data;
 }
 
 TEST_SUITE("KwajDecompressor - Basic") {
@@ -175,7 +218,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     // X=9: all should FAIL
 
     TEST_CASE("f00 - no filename, no extension") {
-        auto path = test::testdata_dir() / "kwaj" / "f00.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f00.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -188,7 +231,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f01 - extension only: .1") {
-        auto path = test::testdata_dir() / "kwaj" / "f01.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f01.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -200,7 +243,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f02 - extension only: .12") {
-        auto path = test::testdata_dir() / "kwaj" / "f02.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f02.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -212,7 +255,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f03 - extension only: .123") {
-        auto path = test::testdata_dir() / "kwaj" / "f03.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f03.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -224,7 +267,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f10 - filename only: 1") {
-        auto path = test::testdata_dir() / "kwaj" / "f10.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f10.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -237,7 +280,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f11 - filename and extension: 1.1") {
-        auto path = test::testdata_dir() / "kwaj" / "f11.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f11.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -250,7 +293,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f20 - filename: 12") {
-        auto path = test::testdata_dir() / "kwaj" / "f20.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f20.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -262,7 +305,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f21 - filename and extension: 12.1") {
-        auto path = test::testdata_dir() / "kwaj" / "f21.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f21.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -275,7 +318,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f80 - filename: 12345678") {
-        auto path = test::testdata_dir() / "kwaj" / "f80.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f80.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -287,7 +330,7 @@ TEST_SUITE("KwajDecompressor - Ground Truth Tests") {
     }
 
     TEST_CASE("f83 - filename and extension: 12345678.123") {
-        auto path = test::testdata_dir() / "kwaj" / "f83.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f83.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -307,7 +350,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     // - cve-2018-14681.kwj
 
     TEST_CASE("f04 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f04.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f04.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -318,7 +361,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f14 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f14.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f14.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -329,7 +372,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f24 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f24.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f24.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -340,7 +383,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f34 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f34.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f34.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -351,7 +394,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f44 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f44.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f44.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -362,7 +405,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f54 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f54.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f54.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -373,7 +416,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f64 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f64.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f64.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -384,7 +427,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f74 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f74.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f74.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -395,7 +438,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f84 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f84.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f84.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -406,7 +449,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f90 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f90.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f90.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -417,7 +460,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f91 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f91.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f91.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -428,7 +471,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f92 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f92.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f92.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -439,7 +482,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f93 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f93.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f93.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -450,7 +493,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("f94 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "f94.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "f94.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -461,7 +504,7 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
     }
 
     TEST_CASE("CVE-2018-14681 - should fail") {
-        auto path = test::testdata_dir() / "kwaj" / "cve-2018-14681.kwj";
+        auto path = ::test::testdata_dir() / "kwaj" / "cve-2018-14681.kwj";
         REQUIRE(std::filesystem::exists(path));
 
         auto data = load_kwaj_file(path);
@@ -470,6 +513,100 @@ TEST_SUITE("KwajDecompressor - Files That Should Fail") {
         // Should fail to parse - this is a malformed file
         auto header = kwaj_decompressor::parse_header(*data);
         CHECK_FALSE(header.has_value());
+    }
+}
+
+TEST_SUITE("KwajDecompressor - Streaming") {
+    TEST_CASE("Streaming uncompressed payload") {
+        std::string text = "TEST";
+        std::vector<u8> payload(text.begin(), text.end());
+        auto data = make_kwaj_data(kwaj::NONE, payload, static_cast<u32>(payload.size()));
+
+        crate::test::streaming_test_config config;
+        config.name = "KWAJ none";
+        config.compressed = data;
+        config.expected = payload;
+        config.output_buffer_sizes = {1, 2, 3};
+
+        crate::test::run_streaming_tests(config, []() {
+            return std::make_unique<kwaj_decompressor>();
+        });
+    }
+
+    TEST_CASE("Streaming XOR payload") {
+        std::string text = "KWAJ";
+        std::vector<u8> payload;
+        for (char ch : text) {
+            payload.push_back(static_cast<u8>(ch ^ 0xFF));
+        }
+        auto data = make_kwaj_data(kwaj::XOR_FF, payload, static_cast<u32>(text.size()));
+
+        crate::test::streaming_test_config config;
+        config.name = "KWAJ xor";
+        config.compressed = data;
+        config.expected.assign(text.begin(), text.end());
+        config.output_buffer_sizes = {1, 2, 4};
+
+        crate::test::run_streaming_tests(config, []() {
+            return std::make_unique<kwaj_decompressor>();
+        });
+    }
+
+    TEST_CASE("Streaming SZDD payload") {
+        std::string text = "Hello KWAJ SZDD";
+        auto [lzss_payload, expected] = crate::test::generate_lzss_literals(text);
+        auto data = make_kwaj_data(
+            kwaj::SZDD,
+            lzss_payload,
+            static_cast<u32>(expected.size())
+        );
+
+        crate::test::streaming_test_config config;
+        config.name = "KWAJ szdd";
+        config.compressed = data;
+        config.expected = expected;
+        config.output_buffer_sizes = {1, 4, 7, 16};
+        config.random_trials = 5;
+
+        crate::test::run_streaming_tests(config, []() {
+            return std::make_unique<kwaj_decompressor>();
+        });
+    }
+
+    TEST_CASE("Streaming LZH payload") {
+        std::vector <u8> expected = {'L', 'Z', 'H', 'S', 'T', 'R', 'M', '!'};
+        auto lzss_payload = crate::test::make_kwaj_lzss_literals(expected);
+        auto data = make_kwaj_data(
+            kwaj::LZH,
+            lzss_payload,
+            static_cast<u32>(expected.size())
+        );
+
+        crate::test::streaming_test_config config;
+        config.name = "KWAJ lzh";
+        config.compressed = data;
+        config.expected = expected;
+        config.output_buffer_sizes = {1, 4, 9};
+        config.random_trials = 5;
+
+        crate::test::run_streaming_tests(config, []() {
+            return std::make_unique<kwaj_decompressor>();
+        });
+    }
+
+    TEST_CASE("decompress_stream helper") {
+        std::string text = "STREAM";
+        std::vector<u8> payload(text.begin(), text.end());
+        auto data = make_kwaj_data(kwaj::NONE, payload, static_cast<u32>(payload.size()));
+
+        memory_input_stream input(byte_span{data});
+        vector_output_stream output;
+        kwaj_decompressor decompressor;
+
+        auto result = decompressor.decompress_stream(input, output);
+        REQUIRE(result.has_value());
+        CHECK(*result == payload.size());
+        CHECK(output.data() == payload);
     }
 }
 
@@ -499,7 +636,7 @@ TEST_SUITE("KwajDecompressor - Valid Files Comprehensive") {
         for (int x = 0; x <= 8; x++) {
             for (int y = 0; y <= 3; y++) {
                 std::string filename = "f" + std::to_string(x) + std::to_string(y) + ".kwj";
-                auto path = test::testdata_dir() / "kwaj" / filename;
+                auto path = ::test::testdata_dir() / "kwaj" / filename;
                 if (!std::filesystem::exists(path)) continue;
 
                 auto data = load_kwaj_file(path);

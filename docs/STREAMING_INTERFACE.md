@@ -384,49 +384,82 @@ Buffer sizes should be configurable for embedded environments.
 
 ## Implementation Phases
 
-### Phase 1: Core streaming infrastructure
-- `stream_reader` base class and implementations
-- `peekable_stream` for format detection
-- `decompressor_stream` wrapper
+### Phase 1: Core streaming infrastructure (in progress)
+- `output_stream` base class (done)
+- `decompressor::supports_streaming` and `decompress_stream` helper (done)
+- `archive::extract_to` streaming surface (done)
+- `stream_reader` base class and implementations (pending)
+- `peekable_stream` for format detection (pending)
+- `decompressor_stream` wrapper (pending)
 
-### Phase 2: Compression formats
-- gzip stream (wrap existing inflate)
-- bzip2 stream (new or wrap libbz2)
-- xz stream (wrap lzma)
-- Auto-detection
+### Phase 2: Compression formats (in progress)
+- mark existing codecs as streaming-capable in the decompressor API (done)
+- gzip stream (wrap existing inflate) (pending)
+- bzip2 stream (new or wrap libbz2) (pending)
+- xz stream (wrap lzma) (pending)
+- Auto-detection (pending)
 
-### Phase 3: Sequential archives
-- tar parser (ustar, pax, gnu extensions)
-- cpio parser (bin, odc, newc formats)
+### Phase 3: Sequential archives (pending)
+- tar parser (ustar, pax, gnu extensions) (pending)
+- cpio parser (bin, odc, newc formats) (pending)
 
-### Phase 4: Integration
-- Format detection pipeline
-- Convenience functions for common patterns
-- Documentation and examples
+### Phase 4: Integration (in progress)
+- random-access archive extraction via `extract_to` (ARJ, ZOO initial coverage) (done)
+- Format detection pipeline (pending)
+- Convenience functions for common patterns (pending)
+- Documentation and examples (in progress)
+
+## Streaming Codec Status (current)
+
+True streaming (supports partial input/output):
+- deflate/zlib/gzip
+- bzip2
+- xz/lzma
+- zstd
+- brotli
+- diet
+- pkware explode
+- mszip
+- szdd lzss
+- szdd container
+- kwaj container
+
+Buffered fallback (requires full input today):
+- lzh
+- lzx
+- arj method 4
+- quantum
+- rar unpackers
 
 ## Testing Plan
 
-1. **Stream reader tests**
+1. **Stream reader tests** (pending)
    - File-based reader with known content
    - Memory reader round-trip
    - Pipe simulation (non-seekable)
 
-2. **Decompressor stream tests**
+2. **Decompressor stream tests** (partial)
    - Each format: compress → stream decompress → verify
    - Chunked reads (1 byte, 13 bytes, 4KB, etc.)
    - Truncated input handling
+   - PKWARE explode streaming coverage (small/medium/large/implicit end) (done)
+   - SZDD streaming coverage (done)
+   - KWAJ streaming coverage (done)
 
-3. **Sequential archive tests**
+3. **Sequential archive tests** (pending)
    - tar: ustar, pax, gnu, sparse files
    - cpio: binary, odc, newc
    - Various file types (regular, directory, symlink)
    - Empty archives, single file, many files
 
-4. **Pipeline integration tests**
+4. **Pipeline integration tests** (pending)
    - tar.gz end-to-end
    - tar.xz end-to-end
    - Auto-detection accuracy
    - Nested archive extraction
+
+5. **Random-access archive extract_to tests** (partial)
+   - ARJ LZH and ZOO stored streaming extraction (done)
 
 ## Relationship with Ares VFS
 

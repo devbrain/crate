@@ -45,6 +45,9 @@ namespace crate {
             // Extract a file to memory (must be implemented by derived classes)
             [[nodiscard]] virtual result_t <byte_vector> extract(const file_entry& entry) = 0;
 
+            // Extract a file to an output stream (default implementation uses extract to memory)
+            [[nodiscard]] virtual result_t <size_t> extract_to(const file_entry& entry, output_stream& dest);
+
             // Extract a file to disk (default implementation using extract to memory)
             virtual void_result_t extract(const file_entry& entry,
                                           const std::filesystem::path& dest);

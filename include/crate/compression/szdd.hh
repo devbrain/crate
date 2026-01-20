@@ -24,8 +24,7 @@ namespace szdd {
 /// Uses LZSS compression with a 4096-byte window.
 /// Also supports the QBasic 4.5 variant.
 ///
-/// This decompressor requires all input data in a single call to decompress_some()
-/// with input_finished=true. Partial streaming is not supported.
+/// Streaming decompressor that buffers the header and then delegates to LZSS.
 class CRATE_EXPORT szdd_decompressor : public decompressor {
 public:
     szdd_decompressor();
@@ -36,6 +35,8 @@ public:
         mutable_byte_span output,
         bool input_finished = false
     ) override;
+
+    [[nodiscard]] bool supports_streaming() const override { return true; }
 
     void reset() override;
 
