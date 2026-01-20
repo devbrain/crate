@@ -46,7 +46,7 @@ namespace lzx {
     };
 }
 
-class CRATE_EXPORT lzx_decompressor : public decompressor {
+class CRATE_EXPORT lzx_decompressor : public bounded_decompressor {
 public:
     /// Create an LZX decompressor with validation
     /// @param window_bits Window size in bits (15-21)
@@ -66,19 +66,57 @@ public:
     void reset() override;
 
 private:
+    enum class state : u8 {
+        READ_BLOCK_TYPE,
+        READ_BLOCK_SIZE_HI,
+        READ_BLOCK_SIZE_LO,
+        READ_ALIGNED_TREE,
+        READ_MAIN_TREE_0,
+        READ_MAIN_TREE_1,
+        READ_LENGTH_TREE,
+        DECODE_MAIN_SYMBOL,
+        READ_LENGTH_SYMBOL,
+        READ_OFFSET_VERBATIM,
+        READ_OFFSET_ALIGNED,
+        COPY_MATCH,
+        UNCOMPRESSED_ALIGN,
+        UNCOMPRESSED_R0,
+        UNCOMPRESSED_R1,
+        UNCOMPRESSED_R2,
+        UNCOMPRESSED_COPY,
+        UNCOMPRESSED_PAD,
+        DONE
+    };
+
+    enum class tree_state : u8 {
+        READ_PRETREE_LENGTHS,
+        BUILD_PRETREE,
+        DECODE_LENGTHS,
+        DONE
+    };
+
+    enum class run_state : u8 {
+        NONE,
+        READ_RUN_BITS,
+        READ_REPEAT_SYMBOL,
+        FILL_RUN
+    };
+
     void init_state();
     static unsigned calculate_position_slots(unsigned window_bits);
 
-    void_result_t read_aligned_tree(msb_bitstream& bs);
+    bool try_peek_bits(const byte*& ptr, const byte* end, unsigned n, u32& out);
+    bool try_read_bits(const byte*& ptr, const byte* end, unsigned n, u32& out);
+    bool try_read_byte(const byte*& ptr, const byte* end, u8& out);
+    bool try_read_u32_le(const byte*& ptr, const byte* end, u32& out);
+    void remove_bits(unsigned n);
+    void align_to_byte();
 
-    void_result_t read_main_and_length_trees(msb_bitstream& bs);
+    template<size_t N>
+    result_t <bool> try_decode(huffman_decoder<N>& decoder, u16& out, const byte*& ptr, const byte* end);
 
-    static void_result_t read_lengths_with_pretree(msb_bitstream& bs,
-                                          std::span<u8> lengths,
-                                          size_t start, size_t end);
-
-    void_result_t decompress_block(msb_bitstream& bs, mutable_byte_span output,
-                                 size_t& out_pos, size_t block_size, bool use_aligned);
+    void start_tree_reader(u8* lengths, size_t start, size_t end);
+    result_t <bool> advance_tree_reader(const byte*& ptr, const byte* end);
 
     unsigned window_bits_ = 0;
     u32 window_size_ = 0;
@@ -94,6 +132,47 @@ private:
     lzx_main_decoder main_decoder_;
     lzx_length_decoder length_decoder_;
     lzx_aligned_decoder aligned_decoder_;
+
+    state state_ = state::READ_BLOCK_TYPE;
+
+    u64 bit_buffer_ = 0;
+    unsigned bits_left_ = 0;
+
+    u8 block_type_ = 0;
+    size_t block_size_ = 0;
+    size_t block_remaining_ = 0;
+    bool use_aligned_ = false;
+
+    std::array<u8, lzx::NUM_ALIGNED_SYMBOLS> aligned_lengths_{};
+    unsigned aligned_len_idx_ = 0;
+
+    tree_state tree_state_ = tree_state::READ_PRETREE_LENGTHS;
+    run_state run_state_ = run_state::NONE;
+    std::array<u8, 20> pretree_lengths_{};
+    unsigned pretree_len_idx_ = 0;
+    huffman_decoder<20> pretree_decoder_;
+    u8* lengths_ptr_ = nullptr;
+    size_t lengths_idx_ = 0;
+    size_t lengths_end_ = 0;
+    u8 run_symbol_ = 0;
+    unsigned run_bits_ = 0;
+    unsigned run_base_ = 0;
+    unsigned run_remaining_ = 0;
+    u8 run_value_ = 0;
+
+    u16 main_symbol_ = 0;
+    unsigned position_slot_ = 0;
+    unsigned length_header_ = 0;
+    unsigned match_length_ = 0;
+    u32 match_offset_ = 0;
+    unsigned match_remaining_ = 0;
+    unsigned extra_bits_ = 0;
+    unsigned verbatim_bits_needed_ = 0;
+    u32 verbatim_bits_ = 0;
+    u32 aligned_bits_ = 0;
+
+    u32 uncompressed_value_ = 0;
+    unsigned uncompressed_bytes_read_ = 0;
 };
 
 } // namespace crate

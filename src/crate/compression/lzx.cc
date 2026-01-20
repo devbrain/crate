@@ -20,104 +20,440 @@ result_t<stream_result> lzx_decompressor::decompress_some(
     mutable_byte_span output,
     bool input_finished
 ) {
-    // LZX decompression requires all input data at once
-    if (!input_finished) {
-        return stream_result::need_input(0, 0);
+    const byte* in_ptr = input.data();
+    const byte* in_end = input.data() + input.size();
+    byte* out_ptr = output.data();
+    if (!expected_output_set()) {
+        return std::unexpected(error{
+            error_code::InvalidParameter,
+            "Expected size required for bounded decompression"
+        });
     }
+    auto bytes_read = [&]() -> size_t {
+        return static_cast <size_t>(in_ptr - input.data());
+    };
+    auto bytes_written = [&]() -> size_t {
+        return static_cast <size_t>(out_ptr - output.data());
+    };
+    auto finalize = [&](decode_status status) -> stream_result {
+        size_t read = bytes_read();
+        size_t written = bytes_written();
+        advance_output(written);
 
-    msb_bitstream bs(input);
-    size_t out_pos = 0;
-    size_t remaining = output.size();
-
-    while (remaining > 0) {
-        // Read block type and size
-        auto block_type = bs.read_bits(3);
-        if (!block_type) {
-            if (out_pos > 0)
-                break;  // EOF after some data is ok
-            return std::unexpected(block_type.error());
+        if (expected_output_set() && total_output_written() >= expected_output_size()) {
+            state_ = state::DONE;
+            return stream_result::done(read, written);
         }
 
-        auto block_size_hi = bs.read_bits(8);
-        if (!block_size_hi)
-            return std::unexpected(block_size_hi.error());
-        auto block_size_lo = bs.read_bits(8);
-        if (!block_size_lo)
-            return std::unexpected(block_size_lo.error());
+        if (status == decode_status::needs_more_input) {
+            return stream_result::need_input(read, written);
+        }
+        if (status == decode_status::needs_more_output) {
+            return stream_result::need_output(read, written);
+        }
 
-        size_t block_size = (*block_size_hi << 8) | *block_size_lo;
-        if (block_size == 0)
-            block_size = 32768;
+        state_ = state::DONE;
+        return stream_result::done(read, written);
+    };
 
-        block_size = std::min(block_size, remaining);
+    size_t output_limit = output.size();
+    if (expected_output_set()) {
+        size_t written = total_output_written();
+        if (written >= expected_output_size()) {
+            state_ = state::DONE;
+            return stream_result::done(bytes_read(), 0);
+        }
+        size_t remaining = expected_output_size() - written;
+        if (remaining == 0) {
+            state_ = state::DONE;
+            return stream_result::done(bytes_read(), 0);
+        }
+        if (output_limit > remaining) {
+            output_limit = remaining;
+        }
+    }
+    byte* out_end = output.data() + output_limit;
+    if (out_ptr >= out_end) {
+        return stream_result::need_output(bytes_read(), bytes_written());
+    }
 
-        switch (*block_type) {
-            case lzx::BLOCKTYPE_ALIGNED: {
-                // Read aligned offset tree
-                auto result = read_aligned_tree(bs);
-                if (!result)
-                    return std::unexpected(result.error());
-                [[fallthrough]];
-            }
-
-            case lzx::BLOCKTYPE_VERBATIM: {
-                auto result = read_main_and_length_trees(bs);
-                if (!result)
-                    return std::unexpected(result.error());
-
-                result = decompress_block(bs, output, out_pos, block_size, *block_type == lzx::BLOCKTYPE_ALIGNED);
-                if (!result)
-                    return std::unexpected(result.error());
+    while (state_ != state::DONE) {
+        switch (state_) {
+            case state::READ_BLOCK_TYPE: {
+                u32 value = 0;
+                if (!try_read_bits(in_ptr, in_end, 3, value)) {
+                    goto need_input;
+                }
+                block_type_ = static_cast <u8>(value);
+                state_ = state::READ_BLOCK_SIZE_HI;
                 break;
             }
 
-            case lzx::BLOCKTYPE_UNCOMPRESSED: {
-                bs.align_to_byte();
-
-                // Read R0, R1, R2
-                auto r0 = bs.read_u32_le();
-                if (!r0)
-                    return std::unexpected(r0.error());
-                auto r1 = bs.read_u32_le();
-                if (!r1)
-                    return std::unexpected(r1.error());
-                auto r2 = bs.read_u32_le();
-                if (!r2)
-                    return std::unexpected(r2.error());
-
-                R0_ = *r0;
-                R1_ = *r1;
-                R2_ = *r2;
-
-                // Copy uncompressed data
-                for (size_t i = 0; i < block_size; i++) {
-                    auto value = bs.read_byte();
-                    if (!value)
-                        return std::unexpected(value.error());
-                    output[out_pos++] = *value;
-                    window_[window_pos_++ & (window_size_ - 1)] = *value;
+            case state::READ_BLOCK_SIZE_HI: {
+                u32 value = 0;
+                if (!try_read_bits(in_ptr, in_end, 8, value)) {
+                    goto need_input;
                 }
+                block_size_ = static_cast <size_t>(value) << 8;
+                state_ = state::READ_BLOCK_SIZE_LO;
+                break;
+            }
 
-                // Re-align if odd block size
-                if (block_size & 1) {
-                    bs.read_byte();
+            case state::READ_BLOCK_SIZE_LO: {
+                u32 value = 0;
+                if (!try_read_bits(in_ptr, in_end, 8, value)) {
+                    goto need_input;
+                }
+                block_size_ |= static_cast <size_t>(value);
+                if (block_size_ == 0) {
+                    block_size_ = 32768;
+                }
+                block_remaining_ = block_size_;
+                use_aligned_ = (block_type_ == lzx::BLOCKTYPE_ALIGNED);
+                aligned_len_idx_ = 0;
+
+                if (block_type_ == lzx::BLOCKTYPE_ALIGNED) {
+                    state_ = state::READ_ALIGNED_TREE;
+                } else if (block_type_ == lzx::BLOCKTYPE_VERBATIM) {
+                    start_tree_reader(main_lengths_.data(), 0, lzx::NUM_CHARS);
+                    state_ = state::READ_MAIN_TREE_0;
+                } else if (block_type_ == lzx::BLOCKTYPE_UNCOMPRESSED) {
+                    state_ = state::UNCOMPRESSED_ALIGN;
+                } else {
+                    return std::unexpected(error{error_code::InvalidBlockType, "Invalid LZX block type"});
                 }
                 break;
             }
 
-            default:
-                return std::unexpected(error{error_code::InvalidBlockType, "Invalid LZX block type"});
-        }
+            case state::READ_ALIGNED_TREE: {
+                while (aligned_len_idx_ < lzx::NUM_ALIGNED_SYMBOLS) {
+                    u32 len = 0;
+                    if (!try_read_bits(in_ptr, in_end, 3, len)) {
+                        goto need_input;
+                    }
+                    aligned_lengths_[aligned_len_idx_++] = static_cast <u8>(len);
+                }
+                auto result = aligned_decoder_.build(aligned_lengths_);
+                if (!result) {
+                    return std::unexpected(result.error());
+                }
+                start_tree_reader(main_lengths_.data(), 0, lzx::NUM_CHARS);
+                state_ = state::READ_MAIN_TREE_0;
+                break;
+            }
 
-        remaining -= block_size;
+            case state::READ_MAIN_TREE_0: {
+                auto result = advance_tree_reader(in_ptr, in_end);
+                if (!result) {
+                    return std::unexpected(result.error());
+                }
+                if (!*result) {
+                    goto need_input;
+                }
+                size_t main_tree_size = lzx::NUM_CHARS + num_position_slots_ * 8;
+                start_tree_reader(main_lengths_.data(), lzx::NUM_CHARS, main_tree_size);
+                state_ = state::READ_MAIN_TREE_1;
+                break;
+            }
+
+            case state::READ_MAIN_TREE_1: {
+                auto result = advance_tree_reader(in_ptr, in_end);
+                if (!result) {
+                    return std::unexpected(result.error());
+                }
+                if (!*result) {
+                    goto need_input;
+                }
+                size_t main_tree_size = lzx::NUM_CHARS + num_position_slots_ * 8;
+                auto build = main_decoder_.build(std::span(main_lengths_.data(), main_tree_size));
+                if (!build) {
+                    return std::unexpected(build.error());
+                }
+                start_tree_reader(length_lengths_.data(), 0, lzx::NUM_SECONDARY_LENGTHS);
+                state_ = state::READ_LENGTH_TREE;
+                break;
+            }
+
+            case state::READ_LENGTH_TREE: {
+                auto result = advance_tree_reader(in_ptr, in_end);
+                if (!result) {
+                    return std::unexpected(result.error());
+                }
+                if (!*result) {
+                    goto need_input;
+                }
+                auto build = length_decoder_.build(length_lengths_);
+                if (!build) {
+                    return std::unexpected(build.error());
+                }
+                state_ = state::DECODE_MAIN_SYMBOL;
+                break;
+            }
+
+            case state::DECODE_MAIN_SYMBOL: {
+                if (block_remaining_ == 0) {
+                    state_ = state::READ_BLOCK_TYPE;
+                    break;
+                }
+
+                if (out_ptr >= out_end) {
+                    goto need_output;
+                }
+
+                auto decode = try_decode(main_decoder_, main_symbol_, in_ptr, in_end);
+                if (!decode) {
+                    return std::unexpected(decode.error());
+                }
+                if (!*decode) {
+                    goto need_input;
+                }
+
+                if (main_symbol_ < lzx::NUM_CHARS) {
+                    u8 value = static_cast <u8>(main_symbol_);
+                    *out_ptr++ = value;
+                    window_[window_pos_++ & (window_size_ - 1)] = value;
+                    block_remaining_--;
+                    break;
+                }
+
+                unsigned match_sym = main_symbol_ - lzx::NUM_CHARS;
+                position_slot_ = match_sym / 8;
+                length_header_ = match_sym % 8;
+
+                if (length_header_ == 7) {
+                    state_ = state::READ_LENGTH_SYMBOL;
+                    break;
+                }
+
+                match_length_ = length_header_ + lzx::MIN_MATCH;
+
+                if (position_slot_ == 0) {
+                    match_offset_ = R0_;
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                } else if (position_slot_ == 1) {
+                    match_offset_ = R1_;
+                    std::swap(R0_, R1_);
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                } else if (position_slot_ == 2) {
+                    match_offset_ = R2_;
+                    std::swap(R0_, R2_);
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                } else {
+                    extra_bits_ = lzx::extra_bits[position_slot_];
+                    verbatim_bits_ = 0;
+                    aligned_bits_ = 0;
+                    if (use_aligned_ && extra_bits_ >= 3) {
+                        verbatim_bits_needed_ = extra_bits_ - 3;
+                        state_ = state::READ_OFFSET_VERBATIM;
+                    } else if (extra_bits_ > 0) {
+                        verbatim_bits_needed_ = extra_bits_;
+                        state_ = state::READ_OFFSET_VERBATIM;
+                    } else {
+                        match_offset_ = lzx::position_base[position_slot_];
+                        R2_ = R1_;
+                        R1_ = R0_;
+                        R0_ = match_offset_;
+                        match_remaining_ = match_length_;
+                        state_ = state::COPY_MATCH;
+                    }
+                }
+                break;
+            }
+
+            case state::READ_LENGTH_SYMBOL: {
+                u16 len_sym = 0;
+                auto decode = try_decode(length_decoder_, len_sym, in_ptr, in_end);
+                if (!decode) {
+                    return std::unexpected(decode.error());
+                }
+                if (!*decode) {
+                    goto need_input;
+                }
+                match_length_ = len_sym + lzx::NUM_PRIMARY_LENGTHS + lzx::MIN_MATCH;
+
+                if (position_slot_ == 0) {
+                    match_offset_ = R0_;
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                } else if (position_slot_ == 1) {
+                    match_offset_ = R1_;
+                    std::swap(R0_, R1_);
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                } else if (position_slot_ == 2) {
+                    match_offset_ = R2_;
+                    std::swap(R0_, R2_);
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                } else {
+                    extra_bits_ = lzx::extra_bits[position_slot_];
+                    verbatim_bits_ = 0;
+                    aligned_bits_ = 0;
+                    if (use_aligned_ && extra_bits_ >= 3) {
+                        verbatim_bits_needed_ = extra_bits_ - 3;
+                        state_ = state::READ_OFFSET_VERBATIM;
+                    } else if (extra_bits_ > 0) {
+                        verbatim_bits_needed_ = extra_bits_;
+                        state_ = state::READ_OFFSET_VERBATIM;
+                    } else {
+                        match_offset_ = lzx::position_base[position_slot_];
+                        R2_ = R1_;
+                        R1_ = R0_;
+                        R0_ = match_offset_;
+                        match_remaining_ = match_length_;
+                        state_ = state::COPY_MATCH;
+                    }
+                }
+                break;
+            }
+
+            case state::READ_OFFSET_VERBATIM: {
+                if (verbatim_bits_needed_ > 0) {
+                    u32 bits = 0;
+                    if (!try_read_bits(in_ptr, in_end, verbatim_bits_needed_, bits)) {
+                        goto need_input;
+                    }
+                    verbatim_bits_ = bits;
+                }
+
+                if (use_aligned_ && extra_bits_ >= 3) {
+                    state_ = state::READ_OFFSET_ALIGNED;
+                    break;
+                }
+
+                match_offset_ = lzx::position_base[position_slot_] + verbatim_bits_;
+                R2_ = R1_;
+                R1_ = R0_;
+                R0_ = match_offset_;
+                match_remaining_ = match_length_;
+                state_ = state::COPY_MATCH;
+                break;
+            }
+
+            case state::READ_OFFSET_ALIGNED: {
+                u16 aligned_sym = 0;
+                auto decode = try_decode(aligned_decoder_, aligned_sym, in_ptr, in_end);
+                if (!decode) {
+                    return std::unexpected(decode.error());
+                }
+                if (!*decode) {
+                    goto need_input;
+                }
+                aligned_bits_ = aligned_sym;
+                match_offset_ = lzx::position_base[position_slot_] + (verbatim_bits_ << 3) + aligned_bits_;
+                R2_ = R1_;
+                R1_ = R0_;
+                R0_ = match_offset_;
+                match_remaining_ = match_length_;
+                state_ = state::COPY_MATCH;
+                break;
+            }
+
+            case state::COPY_MATCH: {
+                while (match_remaining_ > 0 && block_remaining_ > 0) {
+                    if (out_ptr >= out_end) {
+                        goto need_output;
+                    }
+                    u8 value = window_[(window_pos_ - match_offset_) & (window_size_ - 1)];
+                    *out_ptr++ = value;
+                    window_[window_pos_++ & (window_size_ - 1)] = value;
+                    match_remaining_--;
+                    block_remaining_--;
+                }
+
+                if (block_remaining_ == 0) {
+                    match_remaining_ = 0;
+                    state_ = state::READ_BLOCK_TYPE;
+                } else if (match_remaining_ == 0) {
+                    state_ = state::DECODE_MAIN_SYMBOL;
+                }
+                break;
+            }
+
+            case state::UNCOMPRESSED_ALIGN:
+                align_to_byte();
+                uncompressed_value_ = 0;
+                uncompressed_bytes_read_ = 0;
+                state_ = state::UNCOMPRESSED_R0;
+                break;
+
+            case state::UNCOMPRESSED_R0:
+                if (!try_read_u32_le(in_ptr, in_end, R0_)) {
+                    goto need_input;
+                }
+                state_ = state::UNCOMPRESSED_R1;
+                break;
+
+            case state::UNCOMPRESSED_R1:
+                if (!try_read_u32_le(in_ptr, in_end, R1_)) {
+                    goto need_input;
+                }
+                state_ = state::UNCOMPRESSED_R2;
+                break;
+
+            case state::UNCOMPRESSED_R2:
+                if (!try_read_u32_le(in_ptr, in_end, R2_)) {
+                    goto need_input;
+                }
+                state_ = state::UNCOMPRESSED_COPY;
+                break;
+
+            case state::UNCOMPRESSED_COPY:
+                while (block_remaining_ > 0) {
+                    if (out_ptr >= out_end) {
+                        goto need_output;
+                    }
+                    u8 value = 0;
+                    if (!try_read_byte(in_ptr, in_end, value)) {
+                        goto need_input;
+                    }
+                    *out_ptr++ = value;
+                    window_[window_pos_++ & (window_size_ - 1)] = value;
+                    block_remaining_--;
+                }
+
+                if (block_remaining_ == 0) {
+                    if (block_size_ & 1) {
+                        state_ = state::UNCOMPRESSED_PAD;
+                    } else {
+                        state_ = state::READ_BLOCK_TYPE;
+                    }
+                }
+                break;
+
+            case state::UNCOMPRESSED_PAD: {
+                u8 pad = 0;
+                if (!try_read_byte(in_ptr, in_end, pad)) {
+                    goto need_input;
+                }
+                state_ = state::READ_BLOCK_TYPE;
+                break;
+            }
+
+            case state::DONE:
+                break;
+        }
     }
 
-    return stream_result::done(input.size(), out_pos);
+    return finalize(decode_status::done);
+
+need_input:
+    if (input_finished) {
+        return std::unexpected(error{error_code::InputBufferUnderflow});
+    }
+    return finalize(decode_status::needs_more_input);
+
+need_output:
+    return finalize(decode_status::needs_more_output);
 }
 void lzx_decompressor::reset() {
     init_state();
 }
 void lzx_decompressor::init_state() {
+    clear_expected_output_size();
     R0_ = 1;
     R1_ = 1;
     R2_ = 1;
@@ -125,6 +461,39 @@ void lzx_decompressor::init_state() {
     std::fill(window_.begin(), window_.end(), 0);
     std::fill(main_lengths_.begin(), main_lengths_.end(), 0);
     std::fill(length_lengths_.begin(), length_lengths_.end(), 0);
+    state_ = state::READ_BLOCK_TYPE;
+    bit_buffer_ = 0;
+    bits_left_ = 0;
+    block_type_ = 0;
+    block_size_ = 0;
+    block_remaining_ = 0;
+    use_aligned_ = false;
+    aligned_len_idx_ = 0;
+    std::fill(aligned_lengths_.begin(), aligned_lengths_.end(), 0);
+    tree_state_ = tree_state::READ_PRETREE_LENGTHS;
+    run_state_ = run_state::NONE;
+    std::fill(pretree_lengths_.begin(), pretree_lengths_.end(), 0);
+    pretree_len_idx_ = 0;
+    lengths_ptr_ = nullptr;
+    lengths_idx_ = 0;
+    lengths_end_ = 0;
+    run_symbol_ = 0;
+    run_bits_ = 0;
+    run_base_ = 0;
+    run_remaining_ = 0;
+    run_value_ = 0;
+    main_symbol_ = 0;
+    position_slot_ = 0;
+    length_header_ = 0;
+    match_length_ = 0;
+    match_offset_ = 0;
+    match_remaining_ = 0;
+    extra_bits_ = 0;
+    verbatim_bits_needed_ = 0;
+    verbatim_bits_ = 0;
+    aligned_bits_ = 0;
+    uncompressed_value_ = 0;
+    uncompressed_bytes_read_ = 0;
 }
 unsigned lzx_decompressor::calculate_position_slots(unsigned window_bits) {
     if (window_bits < 15)
@@ -133,173 +502,206 @@ unsigned lzx_decompressor::calculate_position_slots(unsigned window_bits) {
         return 32 + 2 * (window_bits - 15);
     return 36 + 2 * (window_bits - 17);
 }
-void_result_t lzx_decompressor::read_aligned_tree(msb_bitstream& bs) {
-    std::array<u8, lzx::NUM_ALIGNED_SYMBOLS> lengths{};
-    for (unsigned i = 0; i < lzx::NUM_ALIGNED_SYMBOLS; i++) {
-        auto len = bs.read_bits(3);
-        if (!len)
-            return std::unexpected(len.error());
-        lengths[i] = static_cast<u8>(*len);
-    }
-    return aligned_decoder_.build(lengths);
-}
-void_result_t lzx_decompressor::read_main_and_length_trees(msb_bitstream& bs) {
-    // Read pretree for main tree (first 256 symbols)
-    auto result = read_lengths_with_pretree(bs, main_lengths_, 0, lzx::NUM_CHARS);
-    if (!result)
-        return result;
-
-    // Read pretree for main tree (remaining symbols)
-    size_t main_tree_size = lzx::NUM_CHARS + num_position_slots_ * 8;
-    result = read_lengths_with_pretree(bs, main_lengths_, lzx::NUM_CHARS, main_tree_size);
-    if (!result)
-        return result;
-
-    // Build main tree
-    result = main_decoder_.build(std::span(main_lengths_.data(), main_tree_size));
-    if (!result)
-        return result;
-
-    // Read length tree
-    result = read_lengths_with_pretree(bs, length_lengths_, 0, lzx::NUM_SECONDARY_LENGTHS);
-    if (!result)
-        return result;
-
-    return length_decoder_.build(length_lengths_);
-}
-void_result_t lzx_decompressor::read_lengths_with_pretree(msb_bitstream& bs, std::span<u8> lengths, size_t start,
-                                                          size_t end) {
-    // Read pretree
-    std::array<u8, 20> pretree_lengths{};
-    for (unsigned i = 0; i < 20; i++) {
-        auto len = bs.read_bits(4);
-        if (!len)
-            return std::unexpected(len.error());
-        pretree_lengths[i] = static_cast<u8>(*len);
+bool lzx_decompressor::try_peek_bits(const byte*& ptr, const byte* end, unsigned n, u32& out) {
+    if (n == 0) {
+        out = 0;
+        return true;
     }
 
-    huffman_decoder<20> pretree;
-    auto result = pretree.build(pretree_lengths);
-    if (!result)
-        return result;
-
-    // Decode lengths
-    for (size_t i = start; i < end;) {
-        auto sym = pretree.decode(bs);
-        if (!sym)
-            return std::unexpected(sym.error());
-
-        if (*sym < 17) {
-            lengths[i] = static_cast<u8>((lengths[i] + 17 - *sym) % 17);
-            i++;
-        } else if (*sym == 17) {
-            auto run = bs.read_bits(4);
-            if (!run)
-                return std::unexpected(run.error());
-            for (unsigned j = 0; j < *run + 4 && i < end; j++) {
-                lengths[i++] = 0;
-            }
-        } else if (*sym == 18) {
-            auto run = bs.read_bits(5);
-            if (!run)
-                return std::unexpected(run.error());
-            for (unsigned j = 0; j < *run + 20 && i < end; j++) {
-                lengths[i++] = 0;
-            }
-        } else {  // 19
-            auto run = bs.read_bits(1);
-            if (!run)
-                return std::unexpected(run.error());
-            auto next = pretree.decode(bs);
-            if (!next)
-                return std::unexpected(next.error());
-
-            u8 len = static_cast<u8>((lengths[i] + 17 - *next) % 17);
-            for (unsigned j = 0; j < *run + 4 && i < end; j++) {
-                lengths[i++] = len;
-            }
+    while (bits_left_ < n) {
+        if (ptr >= end) {
+            return false;
         }
+        bit_buffer_ = (bit_buffer_ << 8) | *ptr++;
+        bits_left_ += 8;
     }
 
-    return {};
+    out = static_cast <u32>((bit_buffer_ >> (bits_left_ - n)) & ((1ULL << n) - 1));
+    return true;
 }
-void_result_t lzx_decompressor::decompress_block(msb_bitstream& bs, mutable_byte_span output, size_t& out_pos,
-                                                 size_t block_size, bool use_aligned) {
-    size_t block_end = out_pos + block_size;
 
-    while (out_pos < block_end) {
-        auto main_sym = main_decoder_.decode(bs);
-        if (!main_sym)
-            return std::unexpected(main_sym.error());
+bool lzx_decompressor::try_read_bits(const byte*& ptr, const byte* end, unsigned n, u32& out) {
+    u32 value = 0;
+    if (!try_peek_bits(ptr, end, n, value)) {
+        return false;
+    }
+    remove_bits(n);
+    out = value;
+    return true;
+}
 
-        if (*main_sym < lzx::NUM_CHARS) {
-            // Literal
-            output[out_pos++] = static_cast<u8>(*main_sym);
-            window_[window_pos_++ & (window_size_ - 1)] = static_cast<u8>(*main_sym);
-        } else {
-            // Match
-            unsigned match_sym = *main_sym - lzx::NUM_CHARS;
-            unsigned position_slot = match_sym / 8;
-            unsigned length_header = match_sym % 8;
+bool lzx_decompressor::try_read_byte(const byte*& ptr, const byte* end, u8& out) {
+    u32 value = 0;
+    if (!try_read_bits(ptr, end, 8, value)) {
+        return false;
+    }
+    out = static_cast <u8>(value);
+    return true;
+}
 
-            // Get match length
-            unsigned match_length;
-            if (length_header == 7) {
-                auto len_sym = length_decoder_.decode(bs);
-                if (!len_sym)
-                    return std::unexpected(len_sym.error());
-                match_length = *len_sym + lzx::NUM_PRIMARY_LENGTHS + lzx::MIN_MATCH;
-            } else {
-                match_length = length_header + lzx::MIN_MATCH;
+bool lzx_decompressor::try_read_u32_le(const byte*& ptr, const byte* end, u32& out) {
+    while (uncompressed_bytes_read_ < 4) {
+        u8 next_byte = 0;
+        if (!try_read_byte(ptr, end, next_byte)) {
+            return false;
+        }
+        uncompressed_value_ |= static_cast <u32>(next_byte) << (8 * uncompressed_bytes_read_);
+        uncompressed_bytes_read_++;
+    }
+
+    out = uncompressed_value_;
+    uncompressed_value_ = 0;
+    uncompressed_bytes_read_ = 0;
+    return true;
+}
+
+void lzx_decompressor::remove_bits(unsigned n) {
+    bits_left_ -= n;
+}
+
+void lzx_decompressor::align_to_byte() {
+    bits_left_ -= bits_left_ % 8;
+}
+
+template<size_t N>
+result_t <bool> lzx_decompressor::try_decode(
+    huffman_decoder<N>& decoder,
+    u16& out,
+    const byte*& ptr,
+    const byte* end
+) {
+    struct msb_reader {
+        lzx_decompressor& owner;
+        const byte*& ptr;
+        const byte* end;
+
+        bool try_peek_bits(unsigned n, u32& out) {
+            return owner.try_peek_bits(ptr, end, n, out);
+        }
+
+        void remove_bits(unsigned n) {
+            owner.remove_bits(n);
+        }
+    };
+
+    msb_reader reader{*this, ptr, end};
+    return decoder.try_decode_msb(reader, out);
+}
+
+void lzx_decompressor::start_tree_reader(u8* lengths, size_t start, size_t end) {
+    lengths_ptr_ = lengths;
+    lengths_idx_ = start;
+    lengths_end_ = end;
+    pretree_len_idx_ = 0;
+    tree_state_ = tree_state::READ_PRETREE_LENGTHS;
+    run_state_ = run_state::NONE;
+    run_remaining_ = 0;
+}
+
+result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const byte* end) {
+    while (true) {
+        switch (tree_state_) {
+            case tree_state::READ_PRETREE_LENGTHS: {
+                while (pretree_len_idx_ < pretree_lengths_.size()) {
+                    u32 len = 0;
+                    if (!try_read_bits(ptr, end, 4, len)) {
+                        return false;
+                    }
+                    pretree_lengths_[pretree_len_idx_++] = static_cast <u8>(len);
+                }
+                tree_state_ = tree_state::BUILD_PRETREE;
+                break;
             }
 
-            // Get match offset
-            u32 match_offset;
-            if (position_slot == 0) {
-                match_offset = R0_;
-            } else if (position_slot == 1) {
-                match_offset = R1_;
-                std::swap(R0_, R1_);
-            } else if (position_slot == 2) {
-                match_offset = R2_;
-                std::swap(R0_, R2_);
-            } else {
-                unsigned extra = lzx::extra_bits[position_slot];
-                u32 verbatim_bits = 0;
-                u32 aligned_bits = 0;
+            case tree_state::BUILD_PRETREE: {
+                auto result = pretree_decoder_.build(pretree_lengths_);
+                if (!result) {
+                    return std::unexpected(result.error());
+                }
+                tree_state_ = tree_state::DECODE_LENGTHS;
+                break;
+            }
 
-                if (use_aligned && extra >= 3) {
-                    auto v = bs.read_bits(extra - 3);
-                    if (!v)
-                        return std::unexpected(v.error());
-                    verbatim_bits = *v << 3;
+            case tree_state::DECODE_LENGTHS: {
+                while (lengths_idx_ < lengths_end_) {
+                    if (run_state_ == run_state::FILL_RUN) {
+                        while (run_remaining_ > 0 && lengths_idx_ < lengths_end_) {
+                            lengths_ptr_[lengths_idx_++] = run_value_;
+                            run_remaining_--;
+                        }
+                        if (run_remaining_ == 0) {
+                            run_state_ = run_state::NONE;
+                        }
+                        continue;
+                    }
 
-                    auto a = aligned_decoder_.decode(bs);
-                    if (!a)
-                        return std::unexpected(a.error());
-                    aligned_bits = *a;
-                } else if (extra > 0) {
-                    auto v = bs.read_bits(extra);
-                    if (!v)
-                        return std::unexpected(v.error());
-                    verbatim_bits = *v;
+                    if (run_state_ == run_state::READ_RUN_BITS) {
+                        u32 extra = 0;
+                        if (!try_read_bits(ptr, end, run_bits_, extra)) {
+                            return false;
+                        }
+                        run_remaining_ = run_base_ + extra;
+                        if (run_symbol_ == 19) {
+                            run_state_ = run_state::READ_REPEAT_SYMBOL;
+                        } else {
+                            run_value_ = 0;
+                            run_state_ = run_state::FILL_RUN;
+                        }
+                        continue;
+                    }
+
+                    if (run_state_ == run_state::READ_REPEAT_SYMBOL) {
+                        u16 repeat = 0;
+                        auto decode = try_decode(pretree_decoder_, repeat, ptr, end);
+                        if (!decode) {
+                            return std::unexpected(decode.error());
+                        }
+                        if (!*decode) {
+                            return false;
+                        }
+                        run_value_ = static_cast <u8>((lengths_ptr_[lengths_idx_] + 17 - repeat) % 17);
+                        run_state_ = run_state::FILL_RUN;
+                        continue;
+                    }
+
+                    u16 sym = 0;
+                    auto decode = try_decode(pretree_decoder_, sym, ptr, end);
+                    if (!decode) {
+                        return std::unexpected(decode.error());
+                    }
+                    if (!*decode) {
+                        return false;
+                    }
+
+                    if (sym < 17) {
+                        lengths_ptr_[lengths_idx_] =
+                            static_cast <u8>((lengths_ptr_[lengths_idx_] + 17 - sym) % 17);
+                        lengths_idx_++;
+                    } else if (sym == 17) {
+                        run_symbol_ = 17;
+                        run_bits_ = 4;
+                        run_base_ = 4;
+                        run_state_ = run_state::READ_RUN_BITS;
+                    } else if (sym == 18) {
+                        run_symbol_ = 18;
+                        run_bits_ = 5;
+                        run_base_ = 20;
+                        run_state_ = run_state::READ_RUN_BITS;
+                    } else {
+                        run_symbol_ = 19;
+                        run_bits_ = 1;
+                        run_base_ = 4;
+                        run_state_ = run_state::READ_RUN_BITS;
+                    }
                 }
 
-                match_offset = lzx::position_base[position_slot] + verbatim_bits + aligned_bits;
-                R2_ = R1_;
-                R1_ = R0_;
-                R0_ = match_offset;
+                tree_state_ = tree_state::DONE;
+                return true;
             }
 
-            // Copy match
-            for (unsigned i = 0; i < match_length && out_pos < block_end; i++) {
-                u8 value = window_[(window_pos_ - match_offset) & (window_size_ - 1)];
-                output[out_pos++] = value;
-                window_[window_pos_++ & (window_size_ - 1)] = value;
-            }
+            case tree_state::DONE:
+                return true;
         }
     }
-
-    return {};
 }
 }  // namespace crate

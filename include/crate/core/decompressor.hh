@@ -70,6 +70,15 @@ public:
     // True streaming support (partial input/output across calls)
     [[nodiscard]] virtual bool supports_streaming() const { return false; }
 
+    // Indicates streaming requires a known output size
+    [[nodiscard]] virtual bool requires_output_size() const { return false; }
+
+    // Set expected output size for bounded streaming
+    virtual void set_expected_output_size(size_t /*size*/) {}
+
+    // Clear expected output size for reuse
+    virtual void clear_expected_output_size() {}
+
     // =========================================================================
     // Convenience one-shot interface (implemented in base class)
     // =========================================================================
@@ -89,6 +98,22 @@ public:
         output_stream& output,
         size_t expected_size = 0
     ) {
+        if (requires_output_size()) {
+            if (expected_size == 0) {
+                return std::unexpected(error{
+                    error_code::InvalidParameter,
+                    "Expected size required for bounded decompression"
+                });
+            }
+            set_expected_output_size(expected_size);
+        }
+
+        auto clear_expected = [&]() {
+            if (requires_output_size()) {
+                clear_expected_output_size();
+            }
+        };
+
         if (!supports_streaming()) {
             byte_vector compressed;
             if (auto size = input.size(); size) {
@@ -108,9 +133,11 @@ public:
             }
 
             if (compressed.empty() && expected_size == 0) {
+                clear_expected();
                 return 0;
             }
             if (expected_size == 0) {
+                clear_expected();
                 return std::unexpected(error{
                     error_code::InvalidParameter,
                     "Expected size required for buffered decompression"
@@ -120,14 +147,17 @@ public:
             byte_vector decompressed(expected_size);
             auto result = decompress(compressed, decompressed);
             if (!result) {
+                clear_expected();
                 return std::unexpected(result.error());
             }
             decompressed.resize(*result);
 
             auto write = output.write(decompressed);
             if (!write) {
+                clear_expected();
                 return std::unexpected(write.error());
             }
+            clear_expected();
             return *result;
         }
 
@@ -188,6 +218,7 @@ public:
 
             auto result = decompress_some(in_span, out_span, input_finished);
             if (!result) {
+                clear_expected();
                 return std::unexpected(result.error());
             }
 
@@ -195,6 +226,7 @@ public:
             if (result->bytes_written > 0) {
                 auto write = output.write(byte_span{output_buffer.data(), result->bytes_written});
                 if (!write) {
+                    clear_expected();
                     return std::unexpected(write.error());
                 }
                 total_written += result->bytes_written;
@@ -207,12 +239,14 @@ public:
             if (result->status == decode_status::needs_more_input && !input_finished) {
                 auto fill = fill_input();
                 if (!fill) {
+                    clear_expected();
                     return std::unexpected(fill.error());
                 }
             }
 
             if (result->bytes_read == 0 && result->bytes_written == 0) {
                 if (input_finished) {
+                    clear_expected();
                     return std::unexpected(error{
                         error_code::CorruptData,
                         "Decompression stalled at end of input"
@@ -221,6 +255,7 @@ public:
             }
         }
 
+        clear_expected();
         return total_written;
     }
 
@@ -229,6 +264,37 @@ protected:
     void report_progress(size_t bytes_written, size_t total_expected = 0) const;
 
     progress_callback_t progress_cb_;
+};
+
+// Streaming decompressor that requires a known output size
+class CRATE_EXPORT bounded_decompressor : public decompressor {
+public:
+    [[nodiscard]] bool supports_streaming() const override { return true; }
+    [[nodiscard]] bool requires_output_size() const override { return true; }
+
+    void set_expected_output_size(size_t size) override {
+        expected_output_set_ = true;
+        expected_output_size_ = size;
+        total_output_ = 0;
+    }
+
+    void clear_expected_output_size() override {
+        expected_output_set_ = false;
+        expected_output_size_ = 0;
+        total_output_ = 0;
+    }
+
+protected:
+    [[nodiscard]] bool expected_output_set() const { return expected_output_set_; }
+    [[nodiscard]] size_t expected_output_size() const { return expected_output_size_; }
+    [[nodiscard]] size_t total_output_written() const { return total_output_; }
+
+    void advance_output(size_t bytes) { total_output_ += bytes; }
+
+private:
+    bool expected_output_set_ = false;
+    size_t expected_output_size_ = 0;
+    size_t total_output_ = 0;
 };
 
 // Factory function type

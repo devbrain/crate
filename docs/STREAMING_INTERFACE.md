@@ -424,11 +424,13 @@ True streaming (supports partial input/output):
 - szdd container
 - kwaj container
 
+Bounded streaming (requires expected output size):
+- lzx
+- quantum
+
 Buffered fallback (requires full input today):
 - lzh
-- lzx
 - arj method 4
-- quantum
 - rar unpackers
 
 ## Testing Plan

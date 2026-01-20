@@ -31,7 +31,7 @@ struct CRATE_EXPORT quantum_model {
     void update(unsigned i);
 };
 
-class CRATE_EXPORT quantum_decompressor : public decompressor {
+class CRATE_EXPORT quantum_decompressor : public bounded_decompressor {
 public:
     /// Create a Quantum decompressor with validation
     /// @param window_bits Window size in bits (10-21)
@@ -54,112 +54,233 @@ public:
         mutable_byte_span output,
         bool input_finished = false
     ) override {
-        // Quantum decompression requires all input data at once
-        if (!input_finished) {
-            return stream_result::need_input(0, 0);
+        const byte* in_ptr = input.data();
+        const byte* in_end = input.data() + input.size();
+        byte* out_ptr = output.data();
+        if (!expected_output_set()) {
+            return std::unexpected(error{
+                error_code::InvalidParameter,
+                "Expected size required for bounded decompression"
+            });
+        }
+        size_t output_limit = output.size();
+
+        auto bytes_read = [&]() -> size_t {
+            return static_cast <size_t>(in_ptr - input.data());
+        };
+        auto bytes_written = [&]() -> size_t {
+            return static_cast <size_t>(out_ptr - output.data());
+        };
+        auto finalize = [&](decode_status status) -> stream_result {
+            size_t read = bytes_read();
+            size_t written = bytes_written();
+            advance_output(written);
+
+            if (expected_output_set() && total_output_written() >= expected_output_size()) {
+                state_ = state::DONE;
+                return stream_result::done(read, written);
+            }
+
+            if (status == decode_status::needs_more_input) {
+                return stream_result::need_input(read, written);
+            }
+            if (status == decode_status::needs_more_output) {
+                return stream_result::need_output(read, written);
+            }
+
+            state_ = state::DONE;
+            return stream_result::done(read, written);
+        };
+
+        if (expected_output_set()) {
+            size_t written = total_output_written();
+            if (written >= expected_output_size()) {
+                state_ = state::DONE;
+                return stream_result::done(bytes_read(), 0);
+            }
+            size_t remaining = expected_output_size() - written;
+            if (output_limit > remaining) {
+                output_limit = remaining;
+            }
+        }
+        byte* out_end = output.data() + output_limit;
+        if (out_ptr >= out_end) {
+            return finalize(decode_status::needs_more_output);
         }
 
-        if (input.size() < 2) {
+        while (state_ != state::DONE) {
+            switch (state_) {
+                case state::READ_INIT: {
+                    while (init_bytes_read_ < 2) {
+                        if (in_ptr >= in_end) {
+                            if (input_finished) {
+                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                            }
+                            goto need_input;
+                        }
+                        init_word_ = static_cast <u16>((init_word_ << 8) | *in_ptr++);
+                        init_bytes_read_++;
+                    }
+                    C_ = init_word_;
+                    L_ = 0;
+                    H_ = 0xFFFF;
+                    state_ = state::READ_SELECTOR;
+                    break;
+                }
+
+                case state::READ_SELECTOR: {
+                    u16 selector = 0;
+                    if (!try_get_symbol(model7_, selector, in_ptr, in_end, input_finished)) {
+                        goto need_input;
+                    }
+                    selector_ = static_cast <u8>(selector);
+                    if (selector_ < 4) {
+                        state_ = state::READ_LITERAL;
+                    } else if (selector_ == 4) {
+                        match_length_ = 3;
+                        offset_model_ = &model4_;
+                        state_ = state::READ_MATCH_OFFSET_SYMBOL;
+                    } else if (selector_ == 5) {
+                        match_length_ = 4;
+                        offset_model_ = &model5_;
+                        state_ = state::READ_MATCH_OFFSET_SYMBOL;
+                    } else {
+                        state_ = state::READ_MATCH_LEN;
+                    }
+                    break;
+                }
+
+                case state::READ_LITERAL: {
+                    quantum_model* model = nullptr;
+                    switch (selector_) {
+                        case 0:
+                            model = &model0_;
+                            break;
+                        case 1:
+                            model = &model1_;
+                            break;
+                        case 2:
+                            model = &model2_;
+                            break;
+                        default:
+                            model = &model3_;
+                            break;
+                    }
+
+                    u16 sym = 0;
+                    if (!try_get_symbol(*model, sym, in_ptr, in_end, input_finished)) {
+                        goto need_input;
+                    }
+                    literal_value_ = static_cast <u8>(sym);
+                    state_ = state::WRITE_LITERAL;
+                    break;
+                }
+
+                case state::WRITE_LITERAL:
+                    if (out_ptr >= out_end) {
+                        goto need_output;
+                    }
+                    *out_ptr++ = literal_value_;
+                    window_[window_pos_++ & (window_size_ - 1)] = literal_value_;
+                    state_ = state::READ_SELECTOR;
+                    break;
+
+                case state::READ_MATCH_LEN: {
+                    u16 len_sym = 0;
+                    if (!try_get_symbol(model6len_, len_sym, in_ptr, in_end, input_finished)) {
+                        goto need_input;
+                    }
+                    match_length_ = static_cast <unsigned>(len_sym) + 5;
+                    offset_model_ = &model6_;
+                    state_ = state::READ_MATCH_OFFSET_SYMBOL;
+                    break;
+                }
+
+                case state::READ_MATCH_OFFSET_SYMBOL: {
+                    u16 off_sym = 0;
+                    if (!try_get_symbol(*offset_model_, off_sym, in_ptr, in_end, input_finished)) {
+                        goto need_input;
+                    }
+                    if (off_sym < 2) {
+                        match_offset_ = static_cast <u32>(off_sym + 1);
+                        match_remaining_ = match_length_;
+                        state_ = state::COPY_MATCH;
+                    } else {
+                        u32 off_sym_value = static_cast <u32>(off_sym);
+                        offset_extra_bits_ = (off_sym_value - 2) / 2 + 1;
+                        offset_base_ = (2u + ((off_sym_value - 2) & 1u)) << offset_extra_bits_;
+                        offset_bits_read_ = 0;
+                        offset_extra_value_ = 0;
+                        state_ = state::READ_OFFSET_BITS;
+                    }
+                    break;
+                }
+
+                case state::READ_OFFSET_BITS:
+                    while (offset_bits_read_ < offset_extra_bits_) {
+                        u8 bit = 0;
+                        if (!try_read_bit(in_ptr, in_end, input_finished, bit)) {
+                            goto need_input;
+                        }
+                        offset_extra_value_ = (offset_extra_value_ << 1) | bit;
+                        offset_bits_read_++;
+                    }
+                    match_offset_ = offset_base_ + offset_extra_value_;
+                    match_remaining_ = match_length_;
+                    state_ = state::COPY_MATCH;
+                    break;
+
+                case state::COPY_MATCH:
+                    while (match_remaining_ > 0) {
+                        if (out_ptr >= out_end) {
+                            goto need_output;
+                        }
+                        u8 value = window_[(window_pos_ - match_offset_) & (window_size_ - 1)];
+                        *out_ptr++ = value;
+                        window_[window_pos_++ & (window_size_ - 1)] = value;
+                        match_remaining_--;
+                    }
+                    state_ = state::READ_SELECTOR;
+                    break;
+
+                case state::DONE:
+                    break;
+            }
+
+            if (state_ == state::DONE) {
+                break;
+            }
+        }
+
+        return finalize(decode_status::done);
+
+    need_input:
+        if (input_finished) {
             return std::unexpected(error{error_code::InputBufferUnderflow});
         }
+        return finalize(decode_status::needs_more_input);
 
-        // Initialize arithmetic decoder
-        pos_ = 0;
-        data_ = input;
-        C_ = (static_cast<u16>(input[0]) << 8) | input[1];
-        pos_ = 2;
-        bit_pos_ = 0;
-        H_ = 0xFFFF;
-        L_ = 0;
-
-        size_t out_pos = 0;
-
-        while (out_pos < output.size()) {
-            auto selector = get_symbol(model7_);
-            if (!selector) {
-                if (out_pos > 0)
-                    break;  // EOF after data is ok
-                return std::unexpected(selector.error());
-            }
-
-            if (*selector < 4) {
-                // Literal byte
-                quantum_model* model;
-                switch (*selector) {
-                    case 0:
-                        model = &model0_;
-                        break;
-                    case 1:
-                        model = &model1_;
-                        break;
-                    case 2:
-                        model = &model2_;
-                        break;
-                    default:
-                        model = &model3_;
-                        break;
-                }
-
-                auto sym = get_symbol(*model);
-                if (!sym)
-                    return std::unexpected(sym.error());
-
-                output[out_pos++] = static_cast<u8>(*sym);
-                window_[window_pos_++ & (window_size_ - 1)] = static_cast<u8>(*sym);
-            } else {
-                // Match
-                unsigned match_length;
-                u32 match_offset;
-
-                if (*selector == 4) {
-                    match_length = 3;
-                    auto sym = get_symbol(model4_);
-                    if (!sym)
-                        return std::unexpected(sym.error());
-                    auto off = read_offset(*sym);
-                    if (!off)
-                        return std::unexpected(off.error());
-                    match_offset = *off;
-                } else if (*selector == 5) {
-                    match_length = 4;
-                    auto sym = get_symbol(model5_);
-                    if (!sym)
-                        return std::unexpected(sym.error());
-                    auto off = read_offset(*sym);
-                    if (!off)
-                        return std::unexpected(off.error());
-                    match_offset = *off;
-                } else {
-                    auto len_sym = get_symbol(model6len_);
-                    if (!len_sym)
-                        return std::unexpected(len_sym.error());
-                    match_length = *len_sym + 5;
-
-                    auto off_sym = get_symbol(model6_);
-                    if (!off_sym)
-                        return std::unexpected(off_sym.error());
-                    auto off = read_offset(*off_sym);
-                    if (!off)
-                        return std::unexpected(off.error());
-                    match_offset = *off;
-                }
-
-                // Copy match
-                for (unsigned i = 0; i < match_length && out_pos < output.size(); i++) {
-                    u8 value = window_[(window_pos_ - match_offset) & (window_size_ - 1)];
-                    output[out_pos++] = value;
-                    window_[window_pos_++ & (window_size_ - 1)] = value;
-                }
-            }
-        }
-
-        return stream_result::done(input.size(), out_pos);
+    need_output:
+        return finalize(decode_status::needs_more_output);
     }
 
     void reset() override { init_state(); }
 
 private:
+    enum class state : u8 {
+        READ_INIT,
+        READ_SELECTOR,
+        READ_LITERAL,
+        WRITE_LITERAL,
+        READ_MATCH_LEN,
+        READ_MATCH_OFFSET_SYMBOL,
+        READ_OFFSET_BITS,
+        COPY_MATCH,
+        DONE
+    };
+
     void init_state() {
+        clear_expected_output_size();
         window_pos_ = 0;
         std::fill(window_.begin(), window_.end(), 0);
 
@@ -172,25 +293,48 @@ private:
         model6_.init(0, 42);
         model6len_.init(0, 27);
         model7_.init(0, 7);
-    }
-    result_t<u16> get_symbol(quantum_model& model) {
-        u32 range = static_cast<u32>(H_ - L_) + 1U;
-        u32 symf = (static_cast<u32>(C_ - L_ + 1) * model.symbols[0].cumfreq - 1U) / range;
 
-        unsigned i = 1;
-        while (i < model.entries && model.symbols[i].cumfreq > symf) {
-            i++;
+        state_ = state::READ_INIT;
+        init_word_ = 0;
+        init_bytes_read_ = 0;
+        bit_buffer_ = 0;
+        bits_left_ = 0;
+        pending_symbol_ = false;
+        pending_symbol_value_ = 0;
+        selector_ = 0;
+        literal_value_ = 0;
+        match_length_ = 0;
+        match_offset_ = 0;
+        match_remaining_ = 0;
+        offset_model_ = &model4_;
+        offset_extra_bits_ = 0;
+        offset_bits_read_ = 0;
+        offset_base_ = 0;
+        offset_extra_value_ = 0;
+        H_ = 0;
+        L_ = 0;
+        C_ = 0;
+    }
+
+    bool try_read_bit(const byte*& ptr, const byte* end, bool input_finished, u8& out) {
+        if (bits_left_ == 0) {
+            if (ptr >= end) {
+                if (!input_finished) {
+                    return false;
+                }
+                out = 0;
+                return true;
+            }
+            bit_buffer_ = *ptr++;
+            bits_left_ = 8;
         }
 
-        u16 symbol = model.symbols[i - 1].symbol;
+        out = static_cast <u8>((bit_buffer_ >> (bits_left_ - 1)) & 1);
+        bits_left_--;
+        return true;
+    }
 
-        u32 total = model.symbols[0].cumfreq;
-        H_ = static_cast<u16>(L_ + (model.symbols[i - 1].cumfreq * range) / total - 1);
-        L_ = static_cast<u16>(L_ + (model.symbols[i].cumfreq * range) / total);
-
-        model.update(i - 1);
-
-        // Renormalize
+    bool try_renorm(const byte*& ptr, const byte* end, bool input_finished) {
         while (true) {
             if ((L_ & 0x8000) != (H_ & 0x8000)) {
                 if ((L_ & 0x4000) && !(H_ & 0x4000)) {
@@ -202,55 +346,79 @@ private:
                 }
             }
 
-            L_ <<= 1;
-            H_ = (H_ << 1) | 1;
+            L_ = static_cast <u16>(L_ << 1);
+            H_ = static_cast <u16>((H_ << 1) | 1);
 
             u8 bit = 0;
-            if (pos_ < data_.size()) {
-                bit = (data_[pos_] >> (7 - bit_pos_)) & 1;
-                if (++bit_pos_ == 8) {
-                    bit_pos_ = 0;
-                    pos_++;
-                }
+            if (!try_read_bit(ptr, end, input_finished, bit)) {
+                return false;
             }
-            C_ = (C_ << 1) | bit;
+            C_ = static_cast <u16>((C_ << 1) | bit);
         }
 
-        return symbol;
+        return true;
     }
 
-    result_t<u32> read_offset(unsigned sym) {
-        // Offset decoding
-        if (sym < 2)
-            return sym + 1;
+    bool try_get_symbol(
+        quantum_model& model,
+        u16& symbol,
+        const byte*& ptr,
+        const byte* end,
+        bool input_finished
+    ) {
+        if (!pending_symbol_) {
+            u32 range = static_cast <u32>(H_ - L_) + 1U;
+            u32 total = model.symbols[0].cumfreq;
+            u32 symf = (static_cast <u32>(C_ - L_ + 1) * total - 1U) / range;
 
-        unsigned extra = (sym - 2) / 2 + 1;
-        u32 base = (2 + ((sym - 2) & 1)) << extra;
-
-        // Read extra bits
-        u32 extra_val = 0;
-        for (unsigned i = 0; i < extra; i++) {
-            u8 bit = 0;
-            if (pos_ < data_.size()) {
-                bit = (data_[pos_] >> (7 - bit_pos_)) & 1;
-                if (++bit_pos_ == 8) {
-                    bit_pos_ = 0;
-                    pos_++;
-                }
+            unsigned i = 1;
+            while (i < model.entries && model.symbols[i].cumfreq > symf) {
+                i++;
             }
-            extra_val = (extra_val << 1) | bit;
+
+            symbol = model.symbols[i - 1].symbol;
+
+            H_ = static_cast <u16>(L_ + (model.symbols[i - 1].cumfreq * range) / total - 1);
+            L_ = static_cast <u16>(L_ + (model.symbols[i].cumfreq * range) / total);
+
+            model.update(i - 1);
+
+            pending_symbol_value_ = symbol;
+            pending_symbol_ = true;
         }
 
-        return base + extra_val;
+        if (!try_renorm(ptr, end, input_finished)) {
+            return false;
+        }
+
+        symbol = pending_symbol_value_;
+        pending_symbol_ = false;
+        return true;
     }
 
     u32 window_size_ = 0;
     byte_vector window_;
     u32 window_pos_ = 0;
 
-    byte_span data_;
-    size_t pos_ = 0;
-    unsigned bit_pos_ = 0;
+    state state_ = state::READ_INIT;
+    u16 init_word_ = 0;
+    unsigned init_bytes_read_ = 0;
+    u8 bit_buffer_ = 0;
+    unsigned bits_left_ = 0;
+    bool pending_symbol_ = false;
+    u16 pending_symbol_value_ = 0;
+
+    u8 selector_ = 0;
+    u8 literal_value_ = 0;
+    unsigned match_length_ = 0;
+    u32 match_offset_ = 0;
+    unsigned match_remaining_ = 0;
+    quantum_model* offset_model_ = nullptr;
+
+    unsigned offset_extra_bits_ = 0;
+    unsigned offset_bits_read_ = 0;
+    u32 offset_base_ = 0;
+    u32 offset_extra_value_ = 0;
 
     u16 H_ = 0, L_ = 0, C_ = 0;
 

@@ -170,6 +170,50 @@ namespace crate {
                 });
             }
 
+            // Try to decode one symbol from a streaming MSB reader
+            // Reader must provide: bool try_peek_bits(unsigned, u32&), void remove_bits(unsigned)
+            template <typename Reader>
+            result_t <bool> try_decode_msb(Reader& reader, u16& out) {
+                if (max_length_ == 0) {
+                    return std::unexpected(error{
+                        error_code::InvalidHuffmanTable,
+                        "Failed to decode symbol"
+                    });
+                }
+
+                u32 bits = 0;
+                unsigned peek_len = std::min <unsigned>(max_length_, TableBits);
+                if (!reader.try_peek_bits(peek_len, bits)) {
+                    return false;
+                }
+
+                u32 idx = reverse_bits(bits, TableBits);
+                const auto& entry = table_[idx & (TABLE_SIZE - 1)];
+
+                if (entry.length > 0 && entry.length <= TableBits) {
+                    reader.remove_bits(entry.length);
+                    out = entry.symbol;
+                    return true;
+                }
+
+                for (size_t i = 0; i < overflow_count_; i++) {
+                    const auto& ov = overflow_[i];
+                    if (!reader.try_peek_bits(ov.length, bits)) {
+                        return false;
+                    }
+                    if (bits == ov.code) {
+                        reader.remove_bits(ov.length);
+                        out = ov.symbol;
+                        return true;
+                    }
+                }
+
+                return std::unexpected(error{
+                    error_code::InvalidHuffmanTable,
+                    "Failed to decode symbol"
+                });
+            }
+
         private:
             static constexpr u32 reverse_bits(u32 v, unsigned n) {
                 u32 result = 0;
