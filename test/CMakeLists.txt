@@ -24,12 +24,15 @@ add_executable(crate_tests
     test_lha.cc
     test_lzss.cc
     test_lzx.cc
+    test_lzx_quantum_streaming.cc
     test_explode.cc
     test_main.cc
     test_mszip.cc
     test_progress.cc
     test_rar.cc
     test_rar_corpus.cc
+    test_rar_streaming.cc
+    test_rnc.cc
     test_stuffit.cc
     test_szdd.cc
     test_floppy.cc

@@ -16,11 +16,13 @@ public:
     // @param decompressor: Decompressor instance
     // @param input_buffer_size: Size of internal compressed data buffer
     // @param output_buffer_size: Size of internal decompressed data buffer
+    // @param expected_output_size: Required for bounded decompressors (0 = unknown)
     decompressing_streambuf(
         std::istream& source,
         std::unique_ptr<decompressor> decomp,
         size_t input_buffer_size = 8192,
-        size_t output_buffer_size = 8192
+        size_t output_buffer_size = 8192,
+        size_t expected_output_size = 0
     );
 
     ~decompressing_streambuf() override;
@@ -71,7 +73,8 @@ public:
         std::istream& source,
         std::unique_ptr<decompressor> decomp,
         size_t input_buffer_size = 8192,
-        size_t output_buffer_size = 8192
+        size_t output_buffer_size = 8192,
+        size_t expected_output_size = 0
     );
 
     ~idecompressing_stream() override;

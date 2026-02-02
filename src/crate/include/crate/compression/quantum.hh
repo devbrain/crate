@@ -266,6 +266,35 @@ public:
 
     void reset() override { init_state(); }
 
+    // Prepare for a new CAB block (resets bitstream but keeps window/models)
+    void set_expected_output_size(size_t size) override {
+        // Call base class implementation
+        bounded_decompressor::set_expected_output_size(size);
+
+        // Reset arithmetic coding state for new CAB block
+        // (but keep window contents and adaptive models for cross-block continuity)
+        state_ = state::READ_INIT;
+        init_word_ = 0;
+        init_bytes_read_ = 0;
+        bit_buffer_ = 0;
+        bits_left_ = 0;
+        pending_symbol_ = false;
+        pending_symbol_value_ = 0;
+        selector_ = 0;
+        literal_value_ = 0;
+        match_length_ = 0;
+        match_offset_ = 0;
+        match_remaining_ = 0;
+        offset_extra_bits_ = 0;
+        offset_bits_read_ = 0;
+        offset_base_ = 0;
+        offset_extra_value_ = 0;
+        H_ = 0;
+        L_ = 0;
+        C_ = 0;
+        renorm_waiting_for_bit_ = false;
+    }
+
 private:
     enum class state : u8 {
         READ_INIT,
@@ -314,6 +343,7 @@ private:
         H_ = 0;
         L_ = 0;
         C_ = 0;
+        renorm_waiting_for_bit_ = false;
     }
 
     bool try_read_bit(const byte*& ptr, const byte* end, bool input_finished, u8& out) {
@@ -335,6 +365,16 @@ private:
     }
 
     bool try_renorm(const byte*& ptr, const byte* end, bool input_finished) {
+        // If we were waiting for a bit from a previous call, read it first
+        if (renorm_waiting_for_bit_) {
+            u8 bit = 0;
+            if (!try_read_bit(ptr, end, input_finished, bit)) {
+                return false;
+            }
+            C_ = static_cast <u16>((C_ << 1) | bit);
+            renorm_waiting_for_bit_ = false;
+        }
+
         while (true) {
             if ((L_ & 0x8000) != (H_ & 0x8000)) {
                 if ((L_ & 0x4000) && !(H_ & 0x4000)) {
@@ -351,6 +391,7 @@ private:
 
             u8 bit = 0;
             if (!try_read_bit(ptr, end, input_finished, bit)) {
+                renorm_waiting_for_bit_ = true;
                 return false;
             }
             C_ = static_cast <u16>((C_ << 1) | bit);
@@ -421,6 +462,7 @@ private:
     u32 offset_extra_value_ = 0;
 
     u16 H_ = 0, L_ = 0, C_ = 0;
+    bool renorm_waiting_for_bit_ = false;
 
     quantum_model model0_, model1_, model2_, model3_;
     quantum_model model4_, model5_, model6_, model6len_, model7_;

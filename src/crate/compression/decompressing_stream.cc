@@ -11,12 +11,16 @@ decompressing_streambuf::decompressing_streambuf(
     std::istream& source,
     std::unique_ptr<decompressor> decomp,
     size_t input_buffer_size,
-    size_t output_buffer_size
+    size_t output_buffer_size,
+    size_t expected_output_size
 )
     : source_(&source),
       decompressor_(std::move(decomp)),
       input_buffer_(input_buffer_size),
       output_buffer_(output_buffer_size) {
+    if (expected_output_size > 0 && decompressor_ && decompressor_->requires_output_size()) {
+        decompressor_->set_expected_output_size(expected_output_size);
+    }
     // Initialize with empty buffer - underflow will fill it
     setg(nullptr, nullptr, nullptr);
 }
@@ -124,11 +128,12 @@ idecompressing_stream::idecompressing_stream(
     std::istream& source,
     std::unique_ptr<decompressor> decomp,
     size_t input_buffer_size,
-    size_t output_buffer_size
+    size_t output_buffer_size,
+    size_t expected_output_size
 )
     : std::istream(nullptr),
       buf_(std::make_unique<decompressing_streambuf>(
-          source, std::move(decomp), input_buffer_size, output_buffer_size)) {
+          source, std::move(decomp), input_buffer_size, output_buffer_size, expected_output_size)) {
     rdbuf(buf_.get());
 }
 

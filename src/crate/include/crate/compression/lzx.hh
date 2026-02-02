@@ -65,8 +65,13 @@ public:
 
     void reset() override;
 
+    // Prepare for a new CAB block (resets bitstream but keeps window/R values)
+    void set_expected_output_size(size_t size) override;
+
 private:
     enum class state : u8 {
+        READ_CAB_HEADER,       // CAB-specific: read E8 translation flag
+        READ_CAB_FILESIZE,     // CAB-specific: read file size for E8 translation
         READ_BLOCK_TYPE,
         READ_BLOCK_SIZE_HI,
         READ_BLOCK_SIZE_LO,
@@ -133,10 +138,14 @@ private:
     lzx_length_decoder length_decoder_;
     lzx_aligned_decoder aligned_decoder_;
 
-    state state_ = state::READ_BLOCK_TYPE;
+    state state_ = state::READ_CAB_HEADER;
 
     u64 bit_buffer_ = 0;
     unsigned bits_left_ = 0;
+
+    // CAB-specific header state
+    bool cab_header_read_ = false;
+    u32 e8_filesize_ = 0;
 
     u8 block_type_ = 0;
     size_t block_size_ = 0;

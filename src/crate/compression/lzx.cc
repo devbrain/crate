@@ -79,6 +79,35 @@ result_t<stream_result> lzx_decompressor::decompress_some(
 
     while (state_ != state::DONE) {
         switch (state_) {
+            case state::READ_CAB_HEADER: {
+                // CAB LZX: read 1 bit for E8 translation flag
+                u32 e8_flag = 0;
+                if (!try_read_bits(in_ptr, in_end, 1, e8_flag)) {
+                    goto need_input;
+                }
+                if (e8_flag) {
+                    state_ = state::READ_CAB_FILESIZE;
+                } else {
+                    e8_filesize_ = 0;
+                    cab_header_read_ = true;
+                    state_ = state::READ_BLOCK_TYPE;
+                }
+                break;
+            }
+
+            case state::READ_CAB_FILESIZE: {
+                // CAB LZX: read 16 bits for E8 file size
+                u32 value = 0;
+                if (!try_read_bits(in_ptr, in_end, 16, value)) {
+                    goto need_input;
+                }
+                // e8_filesize_ includes the initial 1 added by mspack
+                e8_filesize_ = 1 + value;
+                cab_header_read_ = true;
+                state_ = state::READ_BLOCK_TYPE;
+                break;
+            }
+
             case state::READ_BLOCK_TYPE: {
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 3, value)) {
@@ -452,6 +481,39 @@ need_output:
 void lzx_decompressor::reset() {
     init_state();
 }
+
+void lzx_decompressor::set_expected_output_size(size_t size) {
+    // Call base class implementation
+    bounded_decompressor::set_expected_output_size(size);
+
+    // Reset bitstream state for new CAB block
+    // (but keep window contents, R0/R1/R2, and CAB header state for cross-block continuity)
+    // After first block, CAB header is already read, so go straight to READ_BLOCK_TYPE
+    state_ = cab_header_read_ ? state::READ_BLOCK_TYPE : state::READ_CAB_HEADER;
+    bit_buffer_ = 0;
+    bits_left_ = 0;
+    block_type_ = 0;
+    block_size_ = 0;
+    block_remaining_ = 0;
+    use_aligned_ = false;
+    aligned_len_idx_ = 0;
+    tree_state_ = tree_state::READ_PRETREE_LENGTHS;
+    run_state_ = run_state::NONE;
+    pretree_len_idx_ = 0;
+    run_remaining_ = 0;
+    main_symbol_ = 0;
+    position_slot_ = 0;
+    length_header_ = 0;
+    match_length_ = 0;
+    match_offset_ = 0;
+    match_remaining_ = 0;
+    extra_bits_ = 0;
+    verbatim_bits_needed_ = 0;
+    verbatim_bits_ = 0;
+    aligned_bits_ = 0;
+    uncompressed_value_ = 0;
+    uncompressed_bytes_read_ = 0;
+}
 void lzx_decompressor::init_state() {
     clear_expected_output_size();
     R0_ = 1;
@@ -461,9 +523,11 @@ void lzx_decompressor::init_state() {
     std::fill(window_.begin(), window_.end(), 0);
     std::fill(main_lengths_.begin(), main_lengths_.end(), 0);
     std::fill(length_lengths_.begin(), length_lengths_.end(), 0);
-    state_ = state::READ_BLOCK_TYPE;
+    state_ = state::READ_CAB_HEADER;
     bit_buffer_ = 0;
     bits_left_ = 0;
+    cab_header_read_ = false;
+    e8_filesize_ = 0;
     block_type_ = 0;
     block_size_ = 0;
     block_remaining_ = 0;
@@ -508,16 +572,44 @@ bool lzx_decompressor::try_peek_bits(const byte*& ptr, const byte* end, unsigned
         return true;
     }
 
+    // LZX reads 16-bit little-endian words, then extracts bits MSB-first
+    // Bits are extracted from the MSB of the buffer, and new words are added
+    // such that i_ptr[1] (high byte of LE word) goes to the most significant position
     while (bits_left_ < n) {
-        if (ptr >= end) {
-            return false;
+        // Need at least 2 bytes for a 16-bit word
+        if (ptr + 1 >= end) {
+            // Handle odd byte at end of input
+            if (ptr < end) {
+                // Single byte available - read it as low byte, put in high position
+                u64 byte_val = static_cast<u64>(*ptr++);
+                bit_buffer_ |= byte_val << (64 - 16 - bits_left_);
+                bits_left_ += 8;
+            } else {
+                return false;
+            }
+        } else {
+            // Read 16-bit little-endian word and place bytes according to mspack:
+            // i_ptr[0] (low byte) goes to bits (32-16-bits_left) to (32-8-bits_left-1)
+            // i_ptr[1] (high byte) goes to bits (32-8-bits_left) to (32-bits_left-1)
+            // This effectively puts the word's MSB first in the output stream
+            u64 lo = static_cast<u64>(ptr[0]);
+            u64 hi = static_cast<u64>(ptr[1]);
+            ptr += 2;
+            // Place high byte in more significant position, low byte in less significant
+            bit_buffer_ |= hi << (64 - 8 - bits_left_);
+            bit_buffer_ |= lo << (64 - 16 - bits_left_);
+            bits_left_ += 16;
         }
-        bit_buffer_ = (bit_buffer_ << 8) | *ptr++;
-        bits_left_ += 8;
     }
 
-    out = static_cast <u32>((bit_buffer_ >> (bits_left_ - n)) & ((1ULL << n) - 1));
+    // Extract n bits from the MSB of the buffer
+    out = static_cast <u32>((bit_buffer_ >> (64 - n)) & ((1ULL << n) - 1));
     return true;
+}
+
+void lzx_decompressor::remove_bits(unsigned n) {
+    bit_buffer_ <<= n;
+    bits_left_ -= n;
 }
 
 bool lzx_decompressor::try_read_bits(const byte*& ptr, const byte* end, unsigned n, u32& out) {
@@ -555,12 +647,10 @@ bool lzx_decompressor::try_read_u32_le(const byte*& ptr, const byte* end, u32& o
     return true;
 }
 
-void lzx_decompressor::remove_bits(unsigned n) {
-    bits_left_ -= n;
-}
-
 void lzx_decompressor::align_to_byte() {
-    bits_left_ -= bits_left_ % 8;
+    unsigned discard = bits_left_ % 8;
+    bit_buffer_ <<= discard;
+    bits_left_ -= discard;
 }
 
 template<size_t N>

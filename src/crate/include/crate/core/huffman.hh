@@ -138,10 +138,14 @@ namespace crate {
 
             // Decode one symbol from MSB-first bitstream
             result_t <u16> decode(msb_bitstream& bs) {
-                auto peek_result = bs.peek_bits(std::min <unsigned>(max_length_, TableBits));
+                unsigned peek_len = std::min <unsigned>(max_length_, TableBits);
+                auto peek_result = bs.peek_bits(peek_len);
                 if (!peek_result) return std::unexpected(peek_result.error());
 
                 u32 bits = *peek_result;
+                if (peek_len < TableBits) {
+                    bits <<= (TableBits - peek_len);
+                }
 
                 // For MSB, reverse bits for table lookup
                 u32 idx = reverse_bits(bits, TableBits);
@@ -170,6 +174,49 @@ namespace crate {
                 });
             }
 
+            // Try to decode one symbol from a streaming LSB reader
+            // Reader must provide: bool try_peek_bits(unsigned, u32&), void remove_bits(unsigned)
+            template <typename Reader>
+            result_t <bool> try_decode_lsb(Reader& reader, u16& out) {
+                if (max_length_ == 0) {
+                    return std::unexpected(error{
+                        error_code::InvalidHuffmanTable,
+                        "Failed to decode symbol"
+                    });
+                }
+
+                u32 bits = 0;
+                unsigned peek_len = std::min <unsigned>(max_length_, TableBits);
+                if (!reader.try_peek_bits(peek_len, bits)) {
+                    return false;
+                }
+
+                const auto& entry = table_[bits & (TABLE_SIZE - 1)];
+                if (entry.length > 0 && entry.length <= TableBits) {
+                    reader.remove_bits(entry.length);
+                    out = entry.symbol;
+                    return true;
+                }
+
+                for (size_t i = 0; i < overflow_count_; i++) {
+                    const auto& ov = overflow_[i];
+                    if (!reader.try_peek_bits(ov.length, bits)) {
+                        return false;
+                    }
+                    u32 code = reverse_bits(bits, ov.length);
+                    if (code == ov.code) {
+                        reader.remove_bits(ov.length);
+                        out = ov.symbol;
+                        return true;
+                    }
+                }
+
+                return std::unexpected(error{
+                    error_code::InvalidHuffmanTable,
+                    "Failed to decode symbol"
+                });
+            }
+
             // Try to decode one symbol from a streaming MSB reader
             // Reader must provide: bool try_peek_bits(unsigned, u32&), void remove_bits(unsigned)
             template <typename Reader>
@@ -185,6 +232,9 @@ namespace crate {
                 unsigned peek_len = std::min <unsigned>(max_length_, TableBits);
                 if (!reader.try_peek_bits(peek_len, bits)) {
                     return false;
+                }
+                if (peek_len < TableBits) {
+                    bits <<= (TableBits - peek_len);
                 }
 
                 u32 idx = reverse_bits(bits, TableBits);

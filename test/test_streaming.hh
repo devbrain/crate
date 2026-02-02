@@ -90,11 +90,20 @@ inline void run_streaming_tests(
     decompressor_factory factory
 ) {
     INFO("Test: " << config.name);
+    auto prepare_decompressor = [&](decompressor& dec) {
+        if (dec.requires_output_size()) {
+            dec.set_expected_output_size(config.expected.size());
+        }
+    };
 
     // First verify one-shot decompression works
     {
         auto dec = factory();
-        byte_vector output(config.expected.size() + 1024);  // Extra space
+        size_t out_size = config.expected.size();
+        if (!dec->requires_output_size()) {
+            out_size += 1024;  // Extra space for unbounded codecs
+        }
+        byte_vector output(out_size);
         auto result = dec->decompress(config.compressed, output);
         REQUIRE_MESSAGE(result.has_value(), "One-shot decompression failed");
         output.resize(*result);
@@ -109,6 +118,7 @@ inline void run_streaming_tests(
 
         CAPTURE(chunk_size);
         auto dec = factory();
+        prepare_decompressor(*dec);
         
         size_t out_size = config.expected.size() + 1024;
         auto result = decompress_chunked(*dec, config.compressed, chunk_size, out_size);
@@ -125,6 +135,7 @@ inline void run_streaming_tests(
         for (size_t out_buf_size : config.output_buffer_sizes) {
             CAPTURE(out_buf_size);
             auto dec = factory();
+            prepare_decompressor(*dec);
             
             auto result = decompress_chunked(*dec, config.compressed, 
                                              config.compressed.size(), out_buf_size);
@@ -145,6 +156,7 @@ inline void run_streaming_tests(
         for (int trial = 0; trial < config.random_trials; trial++) {
             CAPTURE(trial);
             auto dec = factory();
+            prepare_decompressor(*dec);
             byte_vector output(config.expected.size() + 1024);
             size_t in_pos = 0;
             size_t out_pos = 0;
