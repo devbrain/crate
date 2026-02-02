@@ -221,3 +221,202 @@ TEST_SUITE("ChmArchive - Additional Tests") {
         }
     }
 }
+
+// Helper to read a file into a byte_vector
+static byte_vector read_chm_file(const std::filesystem::path& path) {
+    auto file = file_input_stream::open(path);
+    if (!file.has_value()) return {};
+    auto size = file->size();
+    if (!size.has_value()) return {};
+    byte_vector data(*size);
+    auto read = file->read(data);
+    if (!read.has_value()) return {};
+    return data;
+}
+
+TEST_SUITE("ChmArchive - Functional Tests") {
+    TEST_CASE("Open and list main.chm") {
+        auto path = test::chm_dir() / "main.chm";
+        if (!std::filesystem::exists(path)) {
+            MESSAGE("Test file not found, skipping: ", path.string());
+            return;
+        }
+
+        auto data = read_chm_file(path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        // main.chm has 10 files
+        CHECK(files.size() == 10);
+
+        // Check for expected files
+        bool has_system = false;
+        bool has_hhc = false;
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM") {
+                has_system = true;
+                CHECK(f.uncompressed_size == 4216);
+                CHECK(f.folder_index == 0);  // section 0 = uncompressed
+            }
+            if (f.name == "main.hhc") {
+                has_hhc = true;
+                CHECK(f.uncompressed_size == 684);
+                CHECK(f.folder_index == 1);  // section 1 = compressed
+            }
+        }
+        CHECK(has_system);
+        CHECK(has_hhc);
+        MESSAGE("main.chm parsed successfully with ", files.size(), " files");
+    }
+
+    TEST_CASE("Open and list second.chm") {
+        auto path = test::chm_dir() / "second.chm";
+        if (!std::filesystem::exists(path)) {
+            MESSAGE("Test file not found, skipping: ", path.string());
+            return;
+        }
+
+        auto data = read_chm_file(path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        // second.chm has 10 files
+        CHECK(files.size() == 10);
+
+        // Check for expected files
+        bool has_system = false;
+        bool has_hhc = false;
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM") {
+                has_system = true;
+                CHECK(f.uncompressed_size == 4220);
+                CHECK(f.folder_index == 0);  // section 0 = uncompressed
+            }
+            if (f.name == "second.hhc") {
+                has_hhc = true;
+                CHECK(f.uncompressed_size == 574);
+                CHECK(f.folder_index == 1);  // section 1 = compressed
+            }
+        }
+        CHECK(has_system);
+        CHECK(has_hhc);
+        MESSAGE("second.chm parsed successfully with ", files.size(), " files");
+    }
+
+    TEST_CASE("Open and list putty.chm") {
+        auto path = test::chm_dir() / "putty.chm";
+        if (!std::filesystem::exists(path)) {
+            MESSAGE("Test file not found, skipping: ", path.string());
+            return;
+        }
+
+        auto data = read_chm_file(path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        // putty.chm has 457 files
+        CHECK(files.size() == 457);
+
+        // Check for expected files
+        bool has_system = false;
+        bool has_index = false;
+        bool has_css = false;
+        size_t html_count = 0;
+
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM") {
+                has_system = true;
+                CHECK(f.uncompressed_size == 4266);
+                CHECK(f.folder_index == 0);  // section 0 = uncompressed
+            }
+            if (f.name == "index.html") {
+                has_index = true;
+                CHECK(f.folder_index == 1);  // section 1 = compressed
+            }
+            if (f.name == "chm.css") {
+                has_css = true;
+                CHECK(f.uncompressed_size == 254);
+            }
+            if (f.name.size() > 5 && f.name.substr(f.name.size() - 5) == ".html") {
+                html_count++;
+            }
+        }
+        CHECK(has_system);
+        CHECK(has_index);
+        CHECK(has_css);
+        CHECK(html_count > 400);  // Many HTML help pages
+        MESSAGE("putty.chm parsed successfully with ", files.size(), " files (", html_count, " HTML)");
+    }
+
+    TEST_CASE("Extract uncompressed section 0 file (#SYSTEM)") {
+        auto path = test::chm_dir() / "main.chm";
+        if (!std::filesystem::exists(path)) {
+            MESSAGE("Test file not found, skipping: ", path.string());
+            return;
+        }
+
+        auto data = read_chm_file(path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        // Find and extract #SYSTEM (section 0, uncompressed)
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM" && f.folder_index == 0) {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+                CHECK(extract_result->size() == f.uncompressed_size);
+                MESSAGE("Extracted #SYSTEM: ", extract_result->size(), " bytes");
+                break;
+            }
+        }
+    }
+
+    TEST_CASE("Extract compressed section 1 file returns error") {
+        auto path = test::chm_dir() / "main.chm";
+        if (!std::filesystem::exists(path)) {
+            MESSAGE("Test file not found, skipping: ", path.string());
+            return;
+        }
+
+        auto data = read_chm_file(path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        // Find and try to extract main.hhc (section 1, compressed)
+        for (const auto& f : files) {
+            if (f.name == "main.hhc" && f.folder_index == 1) {
+                auto extract_result = archive->extract(f);
+                // Should fail because LZX decompression is not implemented
+                CHECK_FALSE(extract_result.has_value());
+                CHECK(extract_result.error().code() == error_code::UnsupportedCompression);
+                MESSAGE("Section 1 extraction correctly returns UnsupportedCompression error");
+                break;
+            }
+        }
+    }
+}
