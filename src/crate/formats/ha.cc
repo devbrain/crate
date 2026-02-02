@@ -1,4 +1,5 @@
 #include <crate/formats/ha.hh>
+#include <crate/compression/ha.hh>
 #include <crate/core/crc.hh>
 #include <algorithm>
 #include <array>
@@ -1250,16 +1251,32 @@ namespace crate {
                 return byte_vector{};
 
             case ha::ASC: {
-                auto result = ha::decompress_asc(compressed);
+                ha_asc_decompressor decompressor;
+                output.resize(member.original_size);
+                auto result = decompressor.decompress_some(
+                    compressed,
+                    mutable_byte_span(output.data(), output.size()),
+                    true
+                );
                 if (!result) return std::unexpected(result.error());
-                output = std::move(*result);
+                if (result->bytes_written != member.original_size) {
+                    return std::unexpected(error{error_code::CorruptData, "Incomplete decompression"});
+                }
                 break;
             }
 
             case ha::HSC: {
-                auto result = ha::decompress_hsc(compressed);
+                ha_hsc_decompressor decompressor;
+                output.resize(member.original_size);
+                auto result = decompressor.decompress_some(
+                    compressed,
+                    mutable_byte_span(output.data(), output.size()),
+                    true
+                );
                 if (!result) return std::unexpected(result.error());
-                output = std::move(*result);
+                if (result->bytes_written != member.original_size) {
+                    return std::unexpected(error{error_code::CorruptData, "Incomplete decompression"});
+                }
                 break;
             }
 
