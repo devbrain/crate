@@ -4,6 +4,7 @@
 
 set(CRATE_SOURCES
         crate.cc
+        compression/ace_lz.cc
         compression/arc_lzw.cc
         compression/arj_lz.cc
         compression/decompressor.cc
@@ -85,6 +86,7 @@ set(CRATE_PUBLIC_HEADERS
 )
 
 set(CRATE_PRIVATE_HEADERS
+        include/crate/compression/ace_lz.hh
         include/crate/compression/arc_lzw.hh
         include/crate/compression/arj_lz.hh
         include/crate/compression/lzh.hh

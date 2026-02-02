@@ -1,6 +1,7 @@
 #include <crate/formats/ace.hh>
 #include <cstring>
 #include <crate/core/crc.hh>
+#include <crate/compression/ace_lz.hh>
 
 namespace crate {
 
@@ -690,16 +691,19 @@ namespace crate {
 
             case ace::LZ77_V1:
             case ace::LZ77_V2: {
-                ace::lz77_decoder decoder;
-                // Set dictionary size from params if available
+                ace_lz_decompressor decompressor;
                 if (member.params > 0) {
                     size_t dic_bits = 10 + member.params;
-                    decoder.set_dic_size(1u << dic_bits);
+                    decompressor.set_dictionary_size(1u << dic_bits);
                 }
-                auto result = decoder.decompress(compressed, member.orig_size);
-                if (!result)
+                decompressor.set_expected_output_size(member.orig_size);
+                memory_input_stream input(compressed);
+                vector_output_stream output_stream(member.orig_size);
+                auto result = decompressor.decompress_stream(input, output_stream, member.orig_size);
+                if (!result) {
                     return std::unexpected(result.error());
-                output = std::move(*result);
+                }
+                output = output_stream.take();
                 break;
             }
 
