@@ -122,7 +122,7 @@ void lzh_decompressor::reset() {
 
 void lzh_decompressor::init_state() {
     window_.resize(window_size_);
-    std::fill(window_.begin(), window_.end(), 0);
+    std::fill(window_.begin(), window_.end(), ' ');  // LHA uses space-filled window
     window_pos_ = 0;
 
     bit_buffer_ = 0;
