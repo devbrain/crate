@@ -4,6 +4,7 @@
 
 set(CRATE_SOURCES
         crate.cc
+        compression/arc_lzw.cc
         compression/arj_lz.cc
         compression/decompressor.cc
         compression/decompressing_stream.cc
@@ -16,10 +17,15 @@ set(CRATE_SOURCES
         compression/lzx.cc
         compression/mszip.cc
         compression/quantum.cc
+        compression/rar_15.cc
+        compression/rar_29.cc
+        compression/rar5.cc
+        compression/rnc.cc
         compression/rar_filters.cc
         compression/rar_ppm.cc
         compression/rar_unpack.cc
         compression/szdd.cc
+        compression/zoo_lzw.cc
         core/bitstream.cc
         core/crc.cc
         core/error.cc
@@ -79,15 +85,22 @@ set(CRATE_PUBLIC_HEADERS
 )
 
 set(CRATE_PRIVATE_HEADERS
+        include/crate/compression/arc_lzw.hh
         include/crate/compression/arj_lz.hh
         include/crate/compression/lzh.hh
         include/crate/compression/lzss.hh
         include/crate/compression/lzx.hh
         include/crate/compression/mszip.hh
         include/crate/compression/quantum.hh
+        include/crate/compression/rar_15.hh
+        include/crate/compression/rar_29.hh
+        include/crate/compression/rar5.hh
+        include/crate/compression/rar_common.hh
         include/crate/compression/rar_filters.hh
         include/crate/compression/rar_ppm.hh
         include/crate/compression/rar_unpack.hh
+        include/crate/compression/rnc.hh
+        include/crate/compression/zoo_lzw.hh
         include/crate/core/bitstream.hh
         include/crate/core/crc.hh
         include/crate/core/huffman.hh

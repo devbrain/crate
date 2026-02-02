@@ -1,5 +1,6 @@
 #include <crate/formats/arc.hh>
 #include <crate/formats/arc_internal.hh>
+#include <crate/compression/arc_lzw.hh>
 #include <crate/core/crc.hh>
 #include <cstring>
 #include <array>
@@ -305,10 +306,13 @@ namespace crate {
             }
 
             case arc::SQUASHED: {
-                arc::lzw_decoder decoder(true);
-                auto result = decoder.decompress(compressed);
+                arc_lzw_decompressor decomp(true);  // squashed = true (13-bit, no RLE)
+                decomp.set_expected_output_size(member.original_size);
+                memory_input_stream input(compressed);
+                vector_output_stream output_stream(member.original_size);
+                auto result = decomp.decompress_stream(input, output_stream, member.original_size);
                 if (!result) return std::unexpected(result.error());
-                output = std::move(*result);
+                output = output_stream.take();
                 break;
             }
 
