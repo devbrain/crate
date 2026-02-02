@@ -23,6 +23,9 @@ set(CRATE_SOURCES
         compression/rar_29.cc
         compression/rar5.cc
         compression/rnc.cc
+        compression/stuffit_rle.cc
+        compression/stuffit_huffman.cc
+        compression/stuffit_lzw.cc
         compression/rar_filters.cc
         compression/rar_ppm.cc
         compression/rar_unpack.cc
@@ -104,6 +107,9 @@ set(CRATE_PRIVATE_HEADERS
         include/crate/compression/rar_ppm.hh
         include/crate/compression/rar_unpack.hh
         include/crate/compression/rnc.hh
+        include/crate/compression/stuffit_rle.hh
+        include/crate/compression/stuffit_huffman.hh
+        include/crate/compression/stuffit_lzw.hh
         include/crate/compression/zoo_lzw.hh
         include/crate/core/bitstream.hh
         include/crate/core/crc.hh

@@ -5,6 +5,9 @@
 #include <crate/formats/stuffit.hh>
 #include <crate/core/crc.hh>
 #include <crate/compression/inflate.hh>
+#include <crate/compression/stuffit_rle.hh>
+#include <crate/compression/stuffit_huffman.hh>
+#include <crate/compression/stuffit_lzw.hh>
 #include <cstring>
 #include <algorithm>
 #include <memory>
@@ -50,42 +53,6 @@ namespace crate {
             dos_date_time dt{};
             // For now, store raw values - proper implementation would convert
             return dt;
-        }
-
-        // RLE90 decompression (escape byte 0x90)
-        result_t <size_t> decompress_rle90(byte_span input, mutable_byte_span output) {
-            const byte* in = input.data();
-            const byte* in_end = input.data() + input.size();
-            byte* out = output.data();
-            byte* out_end = output.data() + output.size();
-            byte last_byte = 0;
-
-            while (in < in_end && out < out_end) {
-                byte b = *in++;
-
-                if (b == 0x90) {
-                    // Escape sequence
-                    if (in >= in_end) break;
-                    byte count = *in++;
-
-                    if (count == 0) {
-                        // Literal 0x90
-                        if (out >= out_end) break;
-                        *out++ = 0x90;
-                        last_byte = 0x90;
-                    } else {
-                        // Repeat last byte (count-1) more times
-                        for (int i = 1; i < count && out < out_end; i++) {
-                            *out++ = last_byte;
-                        }
-                    }
-                } else {
-                    *out++ = b;
-                    last_byte = b;
-                }
-            }
-
-            return static_cast <size_t>(out - output.data());
         }
 
         // ============================================================
@@ -371,26 +338,6 @@ namespace crate {
 
                 std::vector <tree_node> tree_;
         };
-
-        result_t <size_t> decompress_huffman(byte_span input, mutable_byte_span output) {
-            bit_reader br(input);
-            huffman_tree_decoder tree;
-
-            if (!tree.build_from_stream(br)) {
-                return std::unexpected(error{error_code::CorruptData, "Failed to parse Huffman tree"});
-            }
-
-            byte* out = output.data();
-            byte* out_end = output.data() + output.size();
-
-            while (out < out_end && !br.eof()) {
-                int sym = tree.decode(br);
-                if (sym < 0) break;
-                *out++ = static_cast <byte>(sym);
-            }
-
-            return static_cast <size_t>(out - output.data());
-        }
 
         // ============================================================
         // Method 13: LZSS + Huffman (StuffIt 13)
@@ -1185,11 +1132,6 @@ namespace crate {
                 int bits_in_buffer_ = 0;
         };
 
-        result_t <size_t> decompress_lzw(byte_span input, mutable_byte_span output) {
-            lzw_decoder decoder;
-            return decoder.decompress(input, output);
-        }
-
         result_t <size_t> decompress_arsenic(byte_span input, mutable_byte_span output) {
             bit_reader br(input);
             arsenic_decoder decoder;
@@ -1755,19 +1697,21 @@ namespace crate {
                 break;
 
             case stuffit::compression_method::rle: {
-                auto result = decompress_rle90(compressed, output);
+                stuffit_rle_decompressor decompressor;
+                auto result = decompressor.decompress_some(compressed, output, true);
                 if (!result) return std::unexpected(result.error());
-                if (*result != fork.uncompressed_size) {
-                    output.resize(*result);
+                if (result->bytes_written != fork.uncompressed_size) {
+                    output.resize(result->bytes_written);
                 }
                 break;
             }
 
             case stuffit::compression_method::huffman: {
-                auto result = decompress_huffman(compressed, output);
+                stuffit_huffman_decompressor decompressor;
+                auto result = decompressor.decompress_some(compressed, output, true);
                 if (!result) return std::unexpected(result.error());
-                if (*result != fork.uncompressed_size) {
-                    output.resize(*result);
+                if (result->bytes_written != fork.uncompressed_size) {
+                    output.resize(result->bytes_written);
                 }
                 break;
             }
@@ -1791,10 +1735,11 @@ namespace crate {
             }
 
             case stuffit::compression_method::lzw: {
-                auto result = decompress_lzw(compressed, output);
+                stuffit_lzw_decompressor decompressor;
+                auto result = decompressor.decompress_some(compressed, output, true);
                 if (!result) return std::unexpected(result.error());
-                if (*result != fork.uncompressed_size) {
-                    output.resize(*result);
+                if (result->bytes_written != fork.uncompressed_size) {
+                    output.resize(result->bytes_written);
                 }
                 break;
             }
