@@ -1,4 +1,5 @@
 #include <crate/formats/lha.hh>
+#include <crate/compression/lha_new.hh>
 #include <crate/core/crc.hh>
 #include <algorithm>
 #include <array>
@@ -1285,12 +1286,26 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
     }
     else if (std::memcmp(member.method, lha::METHOD_LH5, 5) == 0 ||
              std::memcmp(member.method, lha::METHOD_LH4, 5) == 0) {
-        lha::lh5_decoder decoder;
-        output = decoder.decompress(compressed, member.original_size);
+        // LH5/LH4: 14-bit window (16KB), 4 offset bits
+        lha_new_decompressor decoder(14, 4);
+        byte_vector result(member.original_size);
+        auto r = decoder.decompress_some(compressed, result, true);
+        if (!r) {
+            return std::unexpected(r.error());
+        }
+        result.resize(r->bytes_written);
+        output = std::move(result);
     }
     else if (std::memcmp(member.method, lha::METHOD_LH6, 5) == 0) {
-        lha::lh6_decoder decoder;
-        output = decoder.decompress(compressed, member.original_size);
+        // LH6: 16-bit window (64KB), 5 offset bits
+        lha_new_decompressor decoder(16, 5);
+        byte_vector result(member.original_size);
+        auto r = decoder.decompress_some(compressed, result, true);
+        if (!r) {
+            return std::unexpected(r.error());
+        }
+        result.resize(r->bytes_written);
+        output = std::move(result);
     }
     else if (std::memcmp(member.method, lha::METHOD_LH7, 5) == 0) {
         // Detect LHark format: level 1, OS type = ' ' (0x20)
@@ -1298,8 +1313,15 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
             lha::lk7_decoder decoder;
             output = decoder.decompress(compressed, member.original_size);
         } else {
-            lha::lh7_decoder decoder;
-            output = decoder.decompress(compressed, member.original_size);
+            // LH7: 17-bit window (128KB), 5 offset bits
+            lha_new_decompressor decoder(17, 5);
+            byte_vector result(member.original_size);
+            auto r = decoder.decompress_some(compressed, result, true);
+            if (!r) {
+                return std::unexpected(r.error());
+            }
+            result.resize(r->bytes_written);
+            output = std::move(result);
         }
     }
     else if (std::memcmp(member.method, lha::METHOD_LZS, 5) == 0) {
