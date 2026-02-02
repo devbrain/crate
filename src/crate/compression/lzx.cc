@@ -2,14 +2,15 @@
 
 namespace crate {
 
-result_t<std::unique_ptr<lzx_decompressor>> lzx_decompressor::create(unsigned window_bits) {
+result_t<std::unique_ptr<lzx_decompressor>> lzx_decompressor::create(unsigned window_bits, lzx_mode mode) {
     if (window_bits < lzx::MIN_WINDOW_BITS || window_bits > lzx::MAX_WINDOW_BITS) {
-        return std::unexpected(error{error_code::InvalidParameter, "LZX window_bits must be 15-21"});
+        return std::unexpected(error{error_code::InvalidParameter, "LXZ window_bits must be 15-21"});
     }
-    return std::make_unique<lzx_decompressor>(window_bits);
+    return std::make_unique<lzx_decompressor>(window_bits, mode);
 }
-lzx_decompressor::lzx_decompressor(unsigned window_bits)
-    : window_bits_(window_bits),
+lzx_decompressor::lzx_decompressor(unsigned window_bits, lzx_mode mode)
+    : mode_(mode),
+      window_bits_(window_bits),
       window_size_(1u << window_bits),
       window_(window_size_, 0),
       num_position_slots_(calculate_position_slots(window_bits)) {
@@ -23,6 +24,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
     const byte* in_ptr = input.data();
     const byte* in_end = input.data() + input.size();
     byte* out_ptr = output.data();
+
     if (!expected_output_set()) {
         return std::unexpected(error{
             error_code::InvalidParameter,
@@ -96,31 +98,41 @@ result_t<stream_result> lzx_decompressor::decompress_some(
             }
 
             case state::READ_CAB_FILESIZE: {
-                // CAB LZX: read 16 bits for E8 file size
+                // CAB LZX: E8 file size is 32 bits
+                // The bit buffer is 64 bits, so we can read 32 bits at once
                 u32 value = 0;
-                if (!try_read_bits(in_ptr, in_end, 16, value)) {
+                if (!try_read_bits(in_ptr, in_end, 32, value)) {
                     goto need_input;
                 }
-                // e8_filesize_ includes the initial 1 added by mspack
-                e8_filesize_ = 1 + value;
+                e8_filesize_ = value;
                 cab_header_read_ = true;
                 state_ = state::READ_BLOCK_TYPE;
                 break;
             }
 
             case state::READ_BLOCK_TYPE: {
+                // Check if we've already produced enough output
+                size_t total = total_output_written() + bytes_written();
+                if (expected_output_set() && total >= expected_output_size()) {
+                    state_ = state::DONE;
+                    break;
+                }
+
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 3, value)) {
                     goto need_input;
                 }
                 block_type_ = static_cast <u8>(value);
+
                 state_ = state::READ_BLOCK_SIZE_HI;
                 break;
             }
 
             case state::READ_BLOCK_SIZE_HI: {
+                // LZX block size is 24 bits: first 16 bits, then 8 bits
+                // Final size = (16-bit value << 8) | 8-bit value
                 u32 value = 0;
-                if (!try_read_bits(in_ptr, in_end, 8, value)) {
+                if (!try_read_bits(in_ptr, in_end, 16, value)) {
                     goto need_input;
                 }
                 block_size_ = static_cast <size_t>(value) << 8;
@@ -149,7 +161,8 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 } else if (block_type_ == lzx::BLOCKTYPE_UNCOMPRESSED) {
                     state_ = state::UNCOMPRESSED_ALIGN;
                 } else {
-                    return std::unexpected(error{error_code::InvalidBlockType, "Invalid LZX block type"});
+                    return std::unexpected(error{error_code::InvalidBlockType,
+                        "Invalid LZX block type: " + std::to_string(block_type_)});
                 }
                 break;
             }
@@ -162,7 +175,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     }
                     aligned_lengths_[aligned_len_idx_++] = static_cast <u8>(len);
                 }
-                auto result = aligned_decoder_.build(aligned_lengths_);
+                auto result = aligned_decoder_.build_msb(aligned_lengths_);
                 if (!result) {
                     return std::unexpected(result.error());
                 }
@@ -194,7 +207,8 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     goto need_input;
                 }
                 size_t main_tree_size = lzx::NUM_CHARS + num_position_slots_ * 8;
-                auto build = main_decoder_.build(std::span(main_lengths_.data(), main_tree_size));
+
+                auto build = main_decoder_.build_msb(std::span(main_lengths_.data(), main_tree_size));
                 if (!build) {
                     return std::unexpected(build.error());
                 }
@@ -211,7 +225,13 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 if (!*result) {
                     goto need_input;
                 }
-                auto build = length_decoder_.build(length_lengths_);
+                for (size_t i = 0; i < 20 && i < length_lengths_.size(); i++) {
+                }
+                u8 max_len = 0;
+                for (auto len : length_lengths_) {
+                    if (len > max_len) max_len = len;
+                }
+                auto build = length_decoder_.build_msb(length_lengths_);
                 if (!build) {
                     return std::unexpected(build.error());
                 }
@@ -281,7 +301,8 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                         verbatim_bits_needed_ = extra_bits_;
                         state_ = state::READ_OFFSET_VERBATIM;
                     } else {
-                        match_offset_ = lzx::position_base[position_slot_];
+                        // For position_slot >= 3, offset = position_base - 2
+                        match_offset_ = lzx::position_base[position_slot_] - 2;
                         R2_ = R1_;
                         R1_ = R0_;
                         R0_ = match_offset_;
@@ -328,7 +349,8 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                         verbatim_bits_needed_ = extra_bits_;
                         state_ = state::READ_OFFSET_VERBATIM;
                     } else {
-                        match_offset_ = lzx::position_base[position_slot_];
+                        // For position_slot >= 3, offset = position_base - 2
+                        match_offset_ = lzx::position_base[position_slot_] - 2;
                         R2_ = R1_;
                         R1_ = R0_;
                         R0_ = match_offset_;
@@ -353,7 +375,8 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     break;
                 }
 
-                match_offset_ = lzx::position_base[position_slot_] + verbatim_bits_;
+                // For position_slot >= 3, offset = position_base - 2 + verbatim_bits
+                match_offset_ = lzx::position_base[position_slot_] - 2 + verbatim_bits_;
                 R2_ = R1_;
                 R1_ = R0_;
                 R0_ = match_offset_;
@@ -372,7 +395,8 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     goto need_input;
                 }
                 aligned_bits_ = aligned_sym;
-                match_offset_ = lzx::position_base[position_slot_] + (verbatim_bits_ << 3) + aligned_bits_;
+                // For position_slot >= 3, offset = position_base - 2 + (verbatim << 3) + aligned
+                match_offset_ = lzx::position_base[position_slot_] - 2 + (verbatim_bits_ << 3) + aligned_bits_;
                 R2_ = R1_;
                 R1_ = R0_;
                 R0_ = match_offset_;
@@ -523,11 +547,13 @@ void lzx_decompressor::init_state() {
     std::fill(window_.begin(), window_.end(), 0);
     std::fill(main_lengths_.begin(), main_lengths_.end(), 0);
     std::fill(length_lengths_.begin(), length_lengths_.end(), 0);
-    state_ = state::READ_CAB_HEADER;
     bit_buffer_ = 0;
     bits_left_ = 0;
-    cab_header_read_ = false;
     e8_filesize_ = 0;
+    // LZX streams start with E8 translation header (1-bit flag + optional 32-bit size)
+    // The header is read once at the start of the compressed stream
+    state_ = state::READ_CAB_HEADER;
+    cab_header_read_ = false;
     block_type_ = 0;
     block_size_ = 0;
     block_remaining_ = 0;
@@ -560,11 +586,14 @@ void lzx_decompressor::init_state() {
     uncompressed_bytes_read_ = 0;
 }
 unsigned lzx_decompressor::calculate_position_slots(unsigned window_bits) {
-    if (window_bits < 15)
-        return 2 * window_bits;
-    if (window_bits < 17)
-        return 32 + 2 * (window_bits - 15);
-    return 36 + 2 * (window_bits - 17);
+    // Position slots lookup table from libmspack
+    // Index 0 = window_bits 15, index 10 = window_bits 25
+    static constexpr unsigned position_slots_table[] = {
+        30, 32, 34, 36, 38, 42, 50, 66, 98, 162, 290
+    };
+    if (window_bits < 15 || window_bits > 25)
+        return 30;  // fallback to minimum
+    return position_slots_table[window_bits - 15];
 }
 bool lzx_decompressor::try_peek_bits(const byte*& ptr, const byte* end, unsigned n, u32& out) {
     if (n == 0) {
@@ -610,6 +639,7 @@ bool lzx_decompressor::try_peek_bits(const byte*& ptr, const byte* end, unsigned
 void lzx_decompressor::remove_bits(unsigned n) {
     bit_buffer_ <<= n;
     bits_left_ -= n;
+    total_bits_consumed_ += n;
 }
 
 bool lzx_decompressor::try_read_bits(const byte*& ptr, const byte* end, unsigned n, u32& out) {
@@ -653,9 +683,9 @@ void lzx_decompressor::align_to_byte() {
     bits_left_ -= discard;
 }
 
-template<size_t N>
+template<size_t N, unsigned TableBits>
 result_t <bool> lzx_decompressor::try_decode(
-    huffman_decoder<N>& decoder,
+    huffman_decoder<N, TableBits>& decoder,
     u16& out,
     const byte*& ptr,
     const byte* end
@@ -704,7 +734,7 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
             }
 
             case tree_state::BUILD_PRETREE: {
-                auto result = pretree_decoder_.build(pretree_lengths_);
+                auto result = pretree_decoder_.build_msb(pretree_lengths_);
                 if (!result) {
                     return std::unexpected(result.error());
                 }
@@ -732,6 +762,8 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
                         }
                         run_remaining_ = run_base_ + extra;
                         if (run_symbol_ == 19) {
+                            // Symbol 19: run of (4+extra) copies of (current - decoded_symbol) mod 17
+                            // Need to decode another pretree symbol
                             run_state_ = run_state::READ_REPEAT_SYMBOL;
                         } else {
                             run_value_ = 0;
@@ -741,15 +773,21 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
                     }
 
                     if (run_state_ == run_state::READ_REPEAT_SYMBOL) {
-                        u16 repeat = 0;
-                        auto decode = try_decode(pretree_decoder_, repeat, ptr, end);
+                        // Symbol 19: decode a pretree symbol, then compute the fill value
+                        // Formula: value = (current_length - decoded_symbol) mod 17
+                        u16 z = 0;
+                        auto decode = try_decode(pretree_decoder_, z, ptr, end);
                         if (!decode) {
                             return std::unexpected(decode.error());
                         }
                         if (!*decode) {
                             return false;
                         }
-                        run_value_ = static_cast <u8>((lengths_ptr_[lengths_idx_] + 17 - repeat) % 17);
+                        // libmspack formula: z = lens[x] - z; if (z < 0) z += 17;
+                        u8 old_val = lengths_ptr_[lengths_idx_];
+                        int diff = static_cast<int>(old_val) - static_cast<int>(z);
+                        if (diff < 0) diff += 17;
+                        run_value_ = static_cast<u8>(diff);
                         run_state_ = run_state::FILL_RUN;
                         continue;
                     }
@@ -764,8 +802,9 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
                     }
 
                     if (sym < 17) {
-                        lengths_ptr_[lengths_idx_] =
-                            static_cast <u8>((lengths_ptr_[lengths_idx_] + 17 - sym) % 17);
+                        u8 old_val = lengths_ptr_[lengths_idx_];
+                        u8 new_val = static_cast <u8>((old_val + 17 - sym) % 17);
+                        lengths_ptr_[lengths_idx_] = new_val;
                         lengths_idx_++;
                     } else if (sym == 17) {
                         run_symbol_ = 17;
@@ -794,4 +833,55 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
         }
     }
 }
+
+void lzx_decompressor::reset_at_interval() {
+    // Reset decoder state at a CHM reset interval
+    // Window contents are preserved, but all other state is reset
+    R0_ = 1;
+    R1_ = 1;
+    R2_ = 1;
+    std::fill(main_lengths_.begin(), main_lengths_.end(), 0);
+    std::fill(length_lengths_.begin(), length_lengths_.end(), 0);
+    // CAB mode reads E8 header after a reset, CHM mode does not
+    if (mode_ == lzx_mode::cab) {
+        state_ = state::READ_CAB_HEADER;
+        cab_header_read_ = false;
+    } else {
+        state_ = state::READ_BLOCK_TYPE;
+        cab_header_read_ = true;
+    }
+    bit_buffer_ = 0;
+    bits_left_ = 0;
+    block_type_ = 0;
+    block_size_ = 0;
+    block_remaining_ = 0;
+    use_aligned_ = false;
+    aligned_len_idx_ = 0;
+    std::fill(aligned_lengths_.begin(), aligned_lengths_.end(), 0);
+    tree_state_ = tree_state::READ_PRETREE_LENGTHS;
+    run_state_ = run_state::NONE;
+    std::fill(pretree_lengths_.begin(), pretree_lengths_.end(), 0);
+    pretree_len_idx_ = 0;
+    lengths_ptr_ = nullptr;
+    lengths_idx_ = 0;
+    lengths_end_ = 0;
+    run_symbol_ = 0;
+    run_bits_ = 0;
+    run_base_ = 0;
+    run_remaining_ = 0;
+    run_value_ = 0;
+    main_symbol_ = 0;
+    position_slot_ = 0;
+    length_header_ = 0;
+    match_length_ = 0;
+    match_offset_ = 0;
+    match_remaining_ = 0;
+    extra_bits_ = 0;
+    verbatim_bits_needed_ = 0;
+    verbatim_bits_ = 0;
+    aligned_bits_ = 0;
+    uncompressed_value_ = 0;
+    uncompressed_bytes_read_ = 0;
+}
+
 }  // namespace crate

@@ -9,6 +9,14 @@
 
 namespace crate {
 
+// LZX mode variants
+// Note: Both modes have the E8 translation header at stream start.
+// The mode affects reset behavior and possibly other format-specific handling.
+enum class lzx_mode {
+    cab,  // CAB format
+    chm   // CHM format
+};
+
 // LZX constants
 namespace lzx {
     // Valid window size range (in bits)
@@ -50,12 +58,20 @@ class CRATE_EXPORT lzx_decompressor : public bounded_decompressor {
 public:
     /// Create an LZX decompressor with validation
     /// @param window_bits Window size in bits (15-21)
+    /// @param mode LXZ variant (cab or chm)
     /// @return Decompressor or error if window_bits is invalid
-    static result_t<std::unique_ptr<lzx_decompressor>> create(unsigned window_bits);
+    static result_t<std::unique_ptr<lzx_decompressor>> create(
+        unsigned window_bits,
+        lzx_mode mode = lzx_mode::cab);
 
     /// Constructor (prefer using create() for validation)
     /// @param window_bits Window size in bits (15-21, unchecked)
-    explicit lzx_decompressor(unsigned window_bits);
+    /// @param mode LXZ variant (cab or chm)
+    explicit lzx_decompressor(unsigned window_bits, lzx_mode mode = lzx_mode::cab);
+
+    /// Reset decoder state at a CHM reset interval
+    /// Clears decoder state but preserves window contents
+    void reset_at_interval();
 
     result_t<stream_result> decompress_some(
         byte_span input,
@@ -117,12 +133,13 @@ private:
     void remove_bits(unsigned n);
     void align_to_byte();
 
-    template<size_t N>
-    result_t <bool> try_decode(huffman_decoder<N>& decoder, u16& out, const byte*& ptr, const byte* end);
+    template<size_t N, unsigned TableBits = HUFFMAN_TABLE_BITS>
+    result_t <bool> try_decode(huffman_decoder<N, TableBits>& decoder, u16& out, const byte*& ptr, const byte* end);
 
     void start_tree_reader(u8* lengths, size_t start, size_t end);
     result_t <bool> advance_tree_reader(const byte*& ptr, const byte* end);
 
+    lzx_mode mode_ = lzx_mode::cab;
     unsigned window_bits_ = 0;
     u32 window_size_ = 0;
     byte_vector window_;
@@ -142,6 +159,7 @@ private:
 
     u64 bit_buffer_ = 0;
     unsigned bits_left_ = 0;
+    size_t total_bits_consumed_ = 0;  // Debug counter
 
     // CAB-specific header state
     bool cab_header_read_ = false;
@@ -159,7 +177,7 @@ private:
     run_state run_state_ = run_state::NONE;
     std::array<u8, 20> pretree_lengths_{};
     unsigned pretree_len_idx_ = 0;
-    huffman_decoder<20> pretree_decoder_;
+    huffman_decoder<20, 6> pretree_decoder_;  // LZX pretree uses 6-bit tables
     u8* lengths_ptr_ = nullptr;
     size_t lengths_idx_ = 0;
     size_t lengths_end_ = 0;

@@ -39,6 +39,8 @@ namespace crate {
 
             void_result_t parse_reset_table();
 
+            void_result_t decompress_content();
+
             struct impl;
             std::unique_ptr <impl> m_pimpl;
     };

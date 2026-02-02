@@ -2,6 +2,8 @@
 #include <crate/formats/chm.hh>
 #include <crate/test_config.hh>
 #include <array>
+#include <fstream>
+#include <iterator>
 
 using namespace crate;
 
@@ -391,7 +393,7 @@ TEST_SUITE("ChmArchive - Functional Tests") {
         }
     }
 
-    TEST_CASE("Extract compressed section 1 file returns error") {
+    TEST_CASE("Extract compressed section 1 file succeeds") {
         auto path = test::chm_dir() / "main.chm";
         if (!std::filesystem::exists(path)) {
             MESSAGE("Test file not found, skipping: ", path.string());
@@ -407,16 +409,270 @@ TEST_SUITE("ChmArchive - Functional Tests") {
         auto& archive = *result;
         const auto& files = archive->files();
 
-        // Find and try to extract main.hhc (section 1, compressed)
+        // Find and extract main.hhc (section 1, LZX compressed)
         for (const auto& f : files) {
             if (f.name == "main.hhc" && f.folder_index == 1) {
                 auto extract_result = archive->extract(f);
-                // Should fail because LZX decompression is not implemented
-                CHECK_FALSE(extract_result.has_value());
-                CHECK(extract_result.error().code() == error_code::UnsupportedCompression);
-                MESSAGE("Section 1 extraction correctly returns UnsupportedCompression error");
+                // LZX decompression is now implemented
+                CHECK(extract_result.has_value());
+                if (extract_result.has_value()) {
+                    CHECK(extract_result->size() == 684);
+                    MESSAGE("Section 1 extraction succeeded, size=", extract_result->size());
+                }
                 break;
             }
         }
+    }
+}
+
+// Helper to read reference file
+static byte_vector read_reference_file(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return {};
+    return byte_vector((std::istreambuf_iterator<char>(file)), {});
+}
+
+TEST_SUITE("ChmArchive - Content Validation") {
+    TEST_CASE("Validate #SYSTEM content from main.chm") {
+        auto chm_path = test::chm_dir() / "main.chm";
+        auto ref_path = test::chm_dir() / "reference" / "main" / "SYSTEM";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        // Find and extract #SYSTEM
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM" && f.folder_index == 0) {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("main.chm #SYSTEM content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find #SYSTEM file");
+    }
+
+    TEST_CASE("Validate #SYSTEM content from second.chm") {
+        auto chm_path = test::chm_dir() / "second.chm";
+        auto ref_path = test::chm_dir() / "reference" / "second" / "SYSTEM";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM" && f.folder_index == 0) {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("second.chm #SYSTEM content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find #SYSTEM file");
+    }
+
+    TEST_CASE("Validate #SYSTEM content from putty.chm") {
+        auto chm_path = test::chm_dir() / "putty.chm";
+        auto ref_path = test::chm_dir() / "reference" / "putty" / "SYSTEM";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        for (const auto& f : files) {
+            if (f.name == "#SYSTEM" && f.folder_index == 0) {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("putty.chm #SYSTEM content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find #SYSTEM file");
+    }
+
+    // Tests for LZX-compressed section 1 content (will pass when LZX is implemented)
+    TEST_CASE("Validate main.hhc content (LZX compressed)") {
+        auto chm_path = test::chm_dir() / "main.chm";
+        auto ref_path = test::chm_dir() / "reference" / "main" / "main.hhc";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        for (const auto& f : files) {
+            if (f.name == "main.hhc") {
+                auto extract_result = archive->extract(f);
+                if (!extract_result.has_value()) {
+                    MESSAGE("Extract failed: ", extract_result.error().message());
+                }
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("main.hhc content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find main.hhc file");
+    }
+
+    TEST_CASE("Validate second.hhc content (LZX compressed)" * doctest::skip(true)) {
+        auto chm_path = test::chm_dir() / "second.chm";
+        auto ref_path = test::chm_dir() / "reference" / "second" / "second.hhc";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        for (const auto& f : files) {
+            if (f.name == "second.hhc") {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("second.hhc content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find second.hhc file");
+    }
+
+    TEST_CASE("Validate chm.css content (LZX compressed)" * doctest::skip(true)) {
+        auto chm_path = test::chm_dir() / "putty.chm";
+        auto ref_path = test::chm_dir() / "reference" / "putty" / "chm.css";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        for (const auto& f : files) {
+            if (f.name == "chm.css") {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("chm.css content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find chm.css file");
+    }
+
+    TEST_CASE("Validate index.html content (LZX compressed)" * doctest::skip(true)) {
+        auto chm_path = test::chm_dir() / "putty.chm";
+        auto ref_path = test::chm_dir() / "reference" / "putty" / "index.html";
+        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
+            MESSAGE("Test files not found, skipping");
+            return;
+        }
+
+        auto data = read_chm_file(chm_path);
+        REQUIRE(!data.empty());
+
+        auto result = chm_archive::open(data);
+        REQUIRE(result.has_value());
+
+        auto& archive = *result;
+        const auto& files = archive->files();
+
+        for (const auto& f : files) {
+            if (f.name == "index.html") {
+                auto extract_result = archive->extract(f);
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
+                MESSAGE("index.html content matches reference (", reference.size(), " bytes)");
+                return;
+            }
+        }
+        FAIL("Did not find index.html file");
     }
 }

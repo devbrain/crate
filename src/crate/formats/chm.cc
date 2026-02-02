@@ -1,5 +1,6 @@
 #include <crate/formats/chm.hh>
 #include <crate/compression/lzx.hh>
+#include <cstdio>
 
 namespace crate {
     namespace chm {
@@ -48,7 +49,22 @@ namespace crate {
         chm::itsp_header itsp_{};
         chm::lzxc_header lzxc_{};
 
+        // Base offset for section 0 content (comes after section 1)
+        u64 content_base_offset_ = 0;
+
+        // Compressed content info
+        u64 compressed_offset_ = 0;
+        u64 compressed_length_ = 0;
+        u64 uncompressed_length_ = 0;
+        unsigned lzx_window_bits_ = 15;
+
+        // Reset table for LZX decompression
         std::vector <u64> reset_table_;
+        u64 reset_block_size_ = 0;
+
+        // Cached decompressed content (lazily populated)
+        byte_vector decompressed_content_;
+
         std::vector <file_entry> files_;
 
         // Internal file entry with additional CHM-specific data
@@ -88,31 +104,126 @@ namespace crate {
 
     const std::vector <file_entry>& chm_archive::files() const { return m_pimpl->files_; }
 
+    void_result_t chm_archive::decompress_content() {
+        // Check if already decompressed
+        if (!m_pimpl->decompressed_content_.empty()) {
+            return {};
+        }
+
+        // Need compressed content and valid parameters
+        if (m_pimpl->compressed_length_ == 0 || m_pimpl->uncompressed_length_ == 0) {
+            return std::unexpected(error{
+                error_code::UnsupportedCompression,
+                "CHM missing compression metadata"
+            });
+        }
+
+        // Create LZX decompressor in CHM mode
+        auto dec = lzx_decompressor::create(m_pimpl->lzx_window_bits_, lzx_mode::chm);
+        if (!dec) {
+            return std::unexpected(dec.error());
+        }
+
+        // Decompress entire content
+        // Note: CHM LZX data may have a 6-byte header at certain reset points
+        // Check for the "10 10 03 00 00 00" prefix and skip it if present
+        const u8* comp_start = m_pimpl->data_.data() + m_pimpl->compressed_offset_;
+        size_t comp_len = static_cast<size_t>(m_pimpl->compressed_length_);
+        if (comp_len >= 6 && comp_start[0] == 0x10 && comp_start[1] == 0x10 &&
+            comp_start[2] == 0x03 && comp_start[3] == 0x00) {
+            fprintf(stderr, "Skipping 6-byte CHM LZX header\n");
+            comp_start += 6;
+            comp_len -= 6;
+        }
+        byte_span compressed(comp_start, comp_len);
+
+        // Debug: show first 32 bytes of compressed data
+        fprintf(stderr, "CHM compressed data offset=0x%llx len=%llu uncompressed=%llu first 32 bytes:\n",
+            static_cast<unsigned long long>(m_pimpl->compressed_offset_),
+            static_cast<unsigned long long>(m_pimpl->compressed_length_),
+            static_cast<unsigned long long>(m_pimpl->uncompressed_length_));
+        fprintf(stderr, "LZXC: version=%u reset_interval=%u window_size=%u cache_size=%u window_bits=%u\n",
+            m_pimpl->lzxc_.version, m_pimpl->lzxc_.reset_interval,
+            m_pimpl->lzxc_.window_size, m_pimpl->lzxc_.cache_size,
+            m_pimpl->lzx_window_bits_);
+        fprintf(stderr, "Reset table: %zu entries, block_size=%llu\n",
+            m_pimpl->reset_table_.size(),
+            static_cast<unsigned long long>(m_pimpl->reset_block_size_));
+        for (size_t i = 0; i < m_pimpl->reset_table_.size() && i < 5; i++) {
+            fprintf(stderr, "  reset[%zu] = %llu\n", i, static_cast<unsigned long long>(m_pimpl->reset_table_[i]));
+        }
+        for (size_t i = 0; i < 32 && i < compressed.size(); i++) {
+            fprintf(stderr, "%02x ", compressed[i]);
+            if ((i + 1) % 16 == 0) fprintf(stderr, "\n");
+        }
+        fprintf(stderr, "\n");
+
+        m_pimpl->decompressed_content_.resize(static_cast<size_t>(m_pimpl->uncompressed_length_));
+
+        (*dec)->set_expected_output_size(m_pimpl->decompressed_content_.size());
+
+        auto result = (*dec)->decompress_some(
+            compressed,
+            m_pimpl->decompressed_content_,
+            true);
+
+        if (!result) {
+            m_pimpl->decompressed_content_.clear();
+            return std::unexpected(result.error());
+        }
+
+        if (result->status != decode_status::done) {
+            m_pimpl->decompressed_content_.clear();
+            return std::unexpected(error{
+                error_code::CorruptData,
+                "LZX decompression incomplete: read=" + std::to_string(result->bytes_read) +
+                " written=" + std::to_string(result->bytes_written) +
+                " expected=" + std::to_string(m_pimpl->uncompressed_length_)
+            });
+        }
+
+        return {};
+    }
+
     result_t <byte_vector> chm_archive::extract(const file_entry& entry) {
         // Find internal entry
         for (const auto& ie : m_pimpl->internal_entries_) {
             if (!ie.name.empty() && ie.name.substr(1) == entry.name) {
                 if (ie.section == 0) {
-                    // Uncompressed section
-                    if (m_pimpl->itsf_.section0_offset + ie.offset + ie.length > m_pimpl->data_.size()) {
+                    // Uncompressed section - content starts after section 1 (directory)
+                    u64 file_offset = m_pimpl->content_base_offset_ + ie.offset;
+                    if (file_offset + ie.length > m_pimpl->data_.size()) {
                         return std::unexpected(error{error_code::TruncatedArchive});
                     }
 
                     byte_vector result(ie.length);
                     std::copy_n(
-                        m_pimpl->data_.begin() + static_cast <std::ptrdiff_t>(
-                            m_pimpl->itsf_.section0_offset + ie.offset),
+                        m_pimpl->data_.begin() + static_cast <std::ptrdiff_t>(file_offset),
                         ie.length, result.begin());
                     if (byte_progress_cb_) {
                         byte_progress_cb_(entry, result.size(), result.size());
                     }
                     return result;
                 } else {
-                    // Compressed section - requires full LZX decompression
-                    return std::unexpected(error{
-                        error_code::UnsupportedCompression,
-                        "CHM LZX decompression not fully implemented"
-                    });
+                    // Compressed section - decompress if needed
+                    auto decomp_result = decompress_content();
+                    if (!decomp_result) {
+                        return std::unexpected(decomp_result.error());
+                    }
+
+                    // Extract from decompressed content
+                    if (ie.offset + ie.length > m_pimpl->decompressed_content_.size()) {
+                        return std::unexpected(error{error_code::TruncatedArchive});
+                    }
+
+                    byte_vector result(ie.length);
+                    std::copy_n(
+                        m_pimpl->decompressed_content_.begin() + static_cast<std::ptrdiff_t>(ie.offset),
+                        ie.length, result.begin());
+                    if (byte_progress_cb_) {
+                        byte_progress_cb_(entry, result.size(), result.size());
+                    }
+                    return result;
                 }
             }
         }
@@ -201,6 +312,10 @@ namespace crate {
         m_pimpl->itsf_.section1_offset = read_u64_le(p);
         p += 8;
         m_pimpl->itsf_.section1_length = read_u64_le(p);
+
+        // Section 0 content starts after section 1 (the directory)
+        m_pimpl->content_base_offset_ = m_pimpl->itsf_.section1_offset +
+                                        m_pimpl->itsf_.section1_length;
 
         return {};
     }
@@ -333,11 +448,84 @@ namespace crate {
     }
 
     void_result_t chm_archive::parse_reset_table() {
-        // Find ::DataSpace/Storage/MSCompressed/Transform/{...}/InstanceData/ResetTable
+        // Find and parse compression metadata from section 0 entries
+        static int parse_debug = 0;
+        if (parse_debug < 3) {
+            fprintf(stderr, "Section 0 entries:\n");
+            for (const auto& e : m_pimpl->internal_entries_) {
+                if (e.section == 0) {
+                    fprintf(stderr, "  '%s' offset=%llu len=%llu\n",
+                        e.name.c_str(),
+                        static_cast<unsigned long long>(e.offset),
+                        static_cast<unsigned long long>(e.length));
+                }
+            }
+            parse_debug++;
+        }
         for (const auto& entry : m_pimpl->internal_entries_) {
-            if (entry.name.find("ResetTable") != std::string::npos) {
-                // Found reset table - parse for LZX reset intervals
-                break;
+            if (entry.section != 0) continue;
+
+            u64 file_offset = m_pimpl->content_base_offset_ + entry.offset;
+            if (file_offset + entry.length > m_pimpl->data_.size()) continue;
+
+            const u8* p = m_pimpl->data_.data() + file_offset;
+
+            if (entry.name.find("ControlData") != std::string::npos && entry.length >= 28) {
+                // Parse LZXC header
+                // Format: size(4), "LZXC"(4), version(4), reset_interval(4), window_size(4), cache_size(4)
+                u32 lzxc_size = read_u32_le(p);
+                if (lzxc_size >= 6 && std::memcmp(p + 4, "LZXC", 4) == 0) {
+                    m_pimpl->lzxc_.version = read_u32_le(p + 8);
+                    m_pimpl->lzxc_.reset_interval = read_u32_le(p + 12);
+                    m_pimpl->lzxc_.window_size = read_u32_le(p + 16);
+                    m_pimpl->lzxc_.cache_size = read_u32_le(p + 20);
+
+                    // Convert window size to window bits
+                    // Version 2: window_size is in 32KB units
+                    u32 ws = (m_pimpl->lzxc_.version == 2)
+                        ? m_pimpl->lzxc_.window_size * 0x8000
+                        : m_pimpl->lzxc_.window_size;
+                    for (unsigned i = 15; i <= 21; i++) {
+                        if ((1u << i) == ws) {
+                            m_pimpl->lzx_window_bits_ = i;
+                            break;
+                        }
+                    }
+                }
+            } else if (entry.name.find("ResetTable") != std::string::npos && entry.length >= 40) {
+                // Parse reset table
+                // Format: version(4), num_entries(4), entry_size(4), header_len(4),
+                //         uncompressed_len(8), compressed_len(8), block_len(8), entries[]
+                u32 num_entries = read_u32_le(p + 4);
+                u32 entry_size = read_u32_le(p + 8);
+                u32 header_len = read_u32_le(p + 12);
+                m_pimpl->uncompressed_length_ = read_u64_le(p + 16);
+                m_pimpl->compressed_length_ = read_u64_le(p + 24);
+                m_pimpl->reset_block_size_ = read_u64_le(p + 32);
+                fprintf(stderr, "ResetTable parsed: num_entries=%u entry_size=%u header_len=%u\n",
+                    num_entries, entry_size, header_len);
+                fprintf(stderr, "  uncompressed=%llu compressed=%llu block_size=%llu\n",
+                    static_cast<unsigned long long>(m_pimpl->uncompressed_length_),
+                    static_cast<unsigned long long>(m_pimpl->compressed_length_),
+                    static_cast<unsigned long long>(m_pimpl->reset_block_size_));
+
+                // Read reset table entries
+                m_pimpl->reset_table_.clear();
+                for (u32 i = 0; i < num_entries && header_len + i * entry_size + entry_size <= entry.length; i++) {
+                    u64 offset = read_u64_le(p + header_len + i * entry_size);
+                    m_pimpl->reset_table_.push_back(offset);
+                }
+            } else if (entry.name.find("Content") != std::string::npos &&
+                       entry.name.find("MSCompressed") != std::string::npos) {
+                // Store compressed content location
+                m_pimpl->compressed_offset_ = file_offset;
+                // Note: Don't overwrite compressed_length_ here - use the value from ResetTable
+                // entry.length may be larger (allocated space) vs actual compressed size
+                fprintf(stderr, "Content entry: section=%u entry.offset=0x%llx entry.length=%llu file_offset=0x%llx\n",
+                    entry.section,
+                    static_cast<unsigned long long>(entry.offset),
+                    static_cast<unsigned long long>(entry.length),
+                    static_cast<unsigned long long>(file_offset));
             }
         }
         return {};

@@ -26,8 +26,19 @@ namespace crate {
 
             huffman_decoder() = default;
 
-            // Build decode table from code lengths
+            // Build decode table from code lengths (for LSB-first streams)
             result_t <void> build(std::span <const u8> lengths) {
+                return build_internal(lengths, false);
+            }
+
+            // Build decode table from code lengths (for MSB-first streams like LZX)
+            result_t <void> build_msb(std::span <const u8> lengths) {
+                return build_internal(lengths, true);
+            }
+
+        private:
+            // Internal build function
+            result_t <void> build_internal(std::span <const u8> lengths, bool msb_order) {
                 if (lengths.size() > MaxSymbols) {
                     return std::unexpected(error{
                         error_code::InvalidHuffmanTable,
@@ -83,11 +94,25 @@ namespace crate {
                     if (len <= TableBits) {
                         // Fits in fast table - replicate entry
                         u32 fill = 1u << (TableBits - len);
-                        u32 idx = reverse_bits(c, len);
-                        for (u32 i = 0; i < fill; i++) {
-                            table_[idx | (i << len)] = huffman_entry{
-                                static_cast <u16>(sym), len, 0
-                            };
+
+                        if (msb_order) {
+                            // MSB order: use code shifted left, fill consecutive entries
+                            // Code is at the MSB position, so shift it to align with TableBits
+                            u32 idx = c << (TableBits - len);
+                            for (u32 i = 0; i < fill; i++) {
+                                table_[idx + i] = huffman_entry{
+                                    static_cast <u16>(sym), len, 0
+                                };
+                            }
+                        } else {
+                            // LSB order: use reversed code, fill with stride
+                            u32 idx = reverse_bits(c, len);
+
+                            for (u32 i = 0; i < fill; i++) {
+                                table_[idx | (i << len)] = huffman_entry{
+                                    static_cast <u16>(sym), len, 0
+                                };
+                            }
                         }
                     } else {
                         // Needs secondary table lookup (store in overflow)
@@ -102,6 +127,7 @@ namespace crate {
                 return {};
             }
 
+        public:
             // Decode one symbol from LSB-first bitstream
             result_t <u16> decode(lsb_bitstream& bs) {
                 auto peek_result = bs.peek_bits(std::min <unsigned>(max_length_, TableBits));
@@ -174,6 +200,7 @@ namespace crate {
                 });
             }
 
+        public:
             // Try to decode one symbol from a streaming LSB reader
             // Reader must provide: bool try_peek_bits(unsigned, u32&), void remove_bits(unsigned)
             template <typename Reader>
@@ -233,11 +260,15 @@ namespace crate {
                 if (!reader.try_peek_bits(peek_len, bits)) {
                     return false;
                 }
+
+                // For MSB streams, use the peeked bits directly as table index
+                // (shifted to align with TableBits if we peeked fewer bits)
                 if (peek_len < TableBits) {
                     bits <<= (TableBits - peek_len);
                 }
 
-                u32 idx = reverse_bits(bits, TableBits);
+                // For MSB: use bits directly as index (no reversal)
+                u32 idx = bits;
                 const auto& entry = table_[idx & (TABLE_SIZE - 1)];
 
                 if (entry.length > 0 && entry.length <= TableBits) {
