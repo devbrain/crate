@@ -27,6 +27,7 @@ set(CRATE_SOURCES
         compression/stuffit_huffman.cc
         compression/stuffit_lzw.cc
         compression/stuffit_method13.cc
+        compression/stuffit_arsenic.cc
         compression/rar_filters.cc
         compression/rar_ppm.cc
         compression/rar_unpack.cc
@@ -112,6 +113,7 @@ set(CRATE_PRIVATE_HEADERS
         include/crate/compression/stuffit_huffman.hh
         include/crate/compression/stuffit_lzw.hh
         include/crate/compression/stuffit_method13.hh
+        include/crate/compression/stuffit_arsenic.hh
         include/crate/compression/zoo_lzw.hh
         include/crate/core/bitstream.hh
         include/crate/core/crc.hh
