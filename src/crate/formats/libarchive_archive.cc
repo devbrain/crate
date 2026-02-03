@@ -1,4 +1,5 @@
 #include <crate/formats/libarchive_archive.hh>
+#include <crate/core/lru_cache.hh>
 #include <crate/core/path.hh>
 #include <archive.h>
 #include <archive_entry.h>
@@ -12,6 +13,10 @@ using la_archive_entry = struct archive_entry;
 namespace crate {
 
 namespace {
+    // Maximum size for a single file extraction to prevent zip bomb attacks
+    // 1GB is a reasonable limit for in-memory extraction
+    constexpr size_t MAX_EXTRACTION_SIZE = 1ULL * 1024 * 1024 * 1024;
+
     // Custom read callback data
     struct memory_read_data {
         const byte* data;
@@ -89,6 +94,10 @@ struct libarchive_archive::impl {
         i64 offset;  // Offset in original data where entry starts (for re-reading)
     };
     std::vector<entry_info> entries_;
+
+    // Cache for extracted files to reduce O(N²) overhead when extracting multiple files
+    // Cache up to 16 recently extracted files (total ~64MB max assuming average 4MB files)
+    mutable lru_cache<u32, byte_vector> extraction_cache{16};
 };
 
 libarchive_archive::libarchive_archive()
@@ -198,6 +207,14 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
         return std::unexpected(error{error_code::InvalidParameter, "Invalid entry index"});
     }
 
+    // Check cache first to avoid O(N²) overhead when extracting multiple files
+    if (auto cached = pimpl_->extraction_cache.get(entry.folder_index)) {
+        if (byte_progress_cb_) {
+            byte_progress_cb_(entry, (*cached)->size(), (*cached)->size());
+        }
+        return **cached;
+    }
+
     // Re-open archive and seek to the entry
     la_archive* a = archive_read_new();
     if (!a) {
@@ -223,11 +240,17 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
             // Found the entry, read its data
             i64 size = archive_entry_size(ae);
             if (size < 0) {
-                // Unknown size, read in chunks
+                // Unknown size, read in chunks with size limit
                 byte_vector output;
                 byte buffer[65536];
                 la_ssize_t bytes_read;
                 while ((bytes_read = archive_read_data(a, buffer, sizeof(buffer))) > 0) {
+                    // Guard against unbounded memory growth
+                    if (output.size() + static_cast<size_t>(bytes_read) > MAX_EXTRACTION_SIZE) {
+                        archive_read_free(a);
+                        return std::unexpected(error{error_code::AllocationLimitExceeded,
+                            "Extraction size exceeds maximum allowed"});
+                    }
                     output.insert(output.end(), buffer, buffer + bytes_read);
                 }
                 if (bytes_read < 0) {
@@ -238,8 +261,17 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                 if (byte_progress_cb_) {
                     byte_progress_cb_(entry, output.size(), output.size());
                 }
+                // Cache the result for future extractions
+                pimpl_->extraction_cache.put(entry.folder_index, output);
                 return output;
             } else {
+                // Guard against zip bombs - reject unreasonably large allocations
+                if (static_cast<size_t>(size) > MAX_EXTRACTION_SIZE) {
+                    archive_read_free(a);
+                    return std::unexpected(error{error_code::AllocationLimitExceeded,
+                        "Uncompressed size exceeds maximum allowed (" + std::to_string(size) + " bytes)"});
+                }
+
                 byte_vector output(static_cast<size_t>(size));
                 la_ssize_t bytes_read = archive_read_data(a, output.data(), output.size());
                 archive_read_free(a);
@@ -253,6 +285,8 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                 if (byte_progress_cb_) {
                     byte_progress_cb_(entry, output.size(), output.size());
                 }
+                // Cache the result for future extractions
+                pimpl_->extraction_cache.put(entry.folder_index, output);
                 return output;
             }
         }

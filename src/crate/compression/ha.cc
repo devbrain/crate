@@ -97,16 +97,33 @@ bool ha_arithmetic_decoder::try_threshold_val(const byte*& ptr, const byte* end,
 
 bool ha_arithmetic_decoder::try_decode_update(const byte*& ptr, const byte* end,
                                               u16 cum_low, u16 cum_high, u16 total, bool end_of_stream) {
+    // Save all state BEFORE any modifications so we can restore on failure
+    u16 saved_high = high_;
+    u16 saved_low = low_;
+    u16 saved_code = code_;
+    u8 saved_byte_buffer = byte_buffer_;
+    u8 saved_bits_remaining = bits_remaining_;
+    const byte* saved_ptr = ptr;
+
+    // Calculate and apply new range bounds
     u32 range = static_cast<u32>(high_ - low_) + 1;
     u32 scale = total;
 
-    u16 new_high = low_ + static_cast<u16>((range * cum_high / scale) - 1);
-    u16 new_low = low_ + static_cast<u16>(range * cum_low / scale);
+    high_ = low_ + static_cast<u16>((range * cum_high / scale) - 1);
+    low_ = low_ + static_cast<u16>(range * cum_low / scale);
 
-    high_ = new_high;
-    low_ = new_low;
+    if (!renormalize(ptr, end, end_of_stream)) {
+        // Restore all state on failure so retry works correctly
+        high_ = saved_high;
+        low_ = saved_low;
+        code_ = saved_code;
+        byte_buffer_ = saved_byte_buffer;
+        bits_remaining_ = saved_bits_remaining;
+        ptr = saved_ptr;
+        return false;
+    }
 
-    return renormalize(ptr, end, end_of_stream);
+    return true;
 }
 
 // =============================================================================

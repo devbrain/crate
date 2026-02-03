@@ -22,6 +22,7 @@ add_executable(crate_tests
     test_hyp.cc
     test_kwaj.cc
     test_lha.cc
+    test_libarchive.cc
     test_lzss.cc
     test_lzx.cc
     test_lzx_quantum_streaming.cc
@@ -36,6 +37,7 @@ add_executable(crate_tests
     test_stuffit.cc
     test_szdd.cc
     test_floppy.cc
+    test_zip.cc
     test_zoo.cc
     $<TARGET_OBJECTS:crate_objects>
 )

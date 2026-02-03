@@ -46,6 +46,10 @@ inline std::filesystem::path hyp_dir() {
     return testdata_dir() / "hyp";
 }
 
+inline std::filesystem::path zip_dir() {
+    return testdata_dir() / "zip";
+}
+
 inline std::filesystem::path ace_dir() {
     return testdata_dir() / "ace";
 }

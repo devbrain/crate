@@ -13,6 +13,7 @@ set(CRATE_SOURCES
         compression/diet.cc
         compression/explode.cc
         compression/ha.cc
+        compression/hyp.cc
         compression/inflate.cc
         compression/kwaj.cc
         compression/lzh.cc
@@ -97,6 +98,7 @@ set(CRATE_PRIVATE_HEADERS
         include/crate/compression/arc_lzw.hh
         include/crate/compression/arj_lz.hh
         include/crate/compression/ha.hh
+        include/crate/compression/hyp.hh
         include/crate/compression/lha_new.hh
         include/crate/compression/lzh.hh
         include/crate/compression/lzss.hh

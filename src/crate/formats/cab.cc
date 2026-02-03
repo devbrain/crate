@@ -7,6 +7,11 @@
 #include <cstring>
 
 namespace crate {
+
+namespace {
+    // Maximum size for folder decompression to prevent zip bomb attacks
+    constexpr size_t MAX_FOLDER_SIZE = 1ULL * 1024 * 1024 * 1024; // 1GB
+}
     // CAB file header structures
     namespace cab {
         constexpr u8 SIGNATURE[] = {'M', 'S', 'C', 'F'};
@@ -98,6 +103,12 @@ namespace crate {
                 folder_size = std::max(folder_size,
                                        f.folder_offset + f.uncompressed_size);
             }
+        }
+
+        // Guard against cab bombs - reject unreasonably large allocations
+        if (folder_size > MAX_FOLDER_SIZE) {
+            return std::unexpected(error{error_code::AllocationLimitExceeded,
+                "Folder size exceeds maximum allowed (" + std::to_string(folder_size) + " bytes)"});
         }
 
         auto folder_data = decompress_folder(entry.folder_index, folder_size);

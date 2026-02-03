@@ -7,6 +7,12 @@
 
 namespace crate {
 
+namespace {
+    // Maximum size for a single file extraction to prevent zip bomb attacks
+    // 1GB is a reasonable limit for in-memory extraction
+    constexpr size_t MAX_EXTRACTION_SIZE = 1ULL * 1024 * 1024 * 1024;
+}
+
 namespace zip {
     // Signatures
     constexpr u32 LOCAL_FILE_SIGNATURE = 0x04034b50;
@@ -240,7 +246,12 @@ void_result_t zip_archive::parse() {
             u16 data_size = read_u16_le(data.data() + pos + 2);
             pos += 4;
 
-            if (header_id == 0x0001 && pos + data_size <= extra_end) {
+            // Bounds check: ensure data_size doesn't exceed remaining extra field
+            if (pos + data_size > extra_end) {
+                break;
+            }
+
+            if (header_id == 0x0001) {
                 // ZIP64 extended information
                 size_t field_pos = pos;
                 if (entry.uncompressed_size == 0xFFFFFFFF && field_pos + 8 <= pos + data_size) {
@@ -315,6 +326,12 @@ result_t<byte_vector> zip_archive::extract(const file_entry& entry) {
 
     if (data_offset + compressed_size > data.size()) {
         return std::unexpected(error{error_code::TruncatedArchive, "File data truncated"});
+    }
+
+    // Guard against zip bombs - reject unreasonably large allocations
+    if (uncompressed_size > MAX_EXTRACTION_SIZE) {
+        return std::unexpected(error{error_code::AllocationLimitExceeded,
+            "Uncompressed size exceeds maximum allowed (" + std::to_string(uncompressed_size) + " bytes)"});
     }
 
     byte_span compressed(data.data() + data_offset, compressed_size);

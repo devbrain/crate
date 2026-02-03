@@ -43,7 +43,10 @@ namespace crate {
         // Encryption errors
         EncryptionError,
         PasswordRequired,
-        InvalidPassword
+        InvalidPassword,
+
+        // Resource errors
+        AllocationLimitExceeded
     };
 
     class CRATE_EXPORT error {

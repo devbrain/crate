@@ -104,6 +104,7 @@ TEST_SUITE("HypArchive - Corpus") {
         const auto& entry = (*archive)->files()[0];
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
+
         CHECK(compare_data(expected, *actual));
     }
 

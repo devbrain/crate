@@ -79,7 +79,14 @@ namespace crate {
                 }
 
                 file.seekg(0, std::ios::end);
-                size_t size = static_cast <size_t>(file.tellg());
+                auto pos = file.tellg();
+                if (pos < 0) {
+                    return std::unexpected(error{
+                        error_code::ReadError,
+                        "Failed to determine file size: " + path.string()
+                    });
+                }
+                size_t size = static_cast<size_t>(pos);
                 file.seekg(0, std::ios::beg);
 
                 return file_input_stream(std::move(file), size);

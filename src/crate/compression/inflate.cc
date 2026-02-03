@@ -1,6 +1,9 @@
 // Public header
 #include <crate/compression/inflate.hh>
 
+#include <algorithm>
+#include <cstdint>
+
 // Configure miniz before including
 #define MINIZ_NO_STDIO
 #define MINIZ_NO_TIME
@@ -134,16 +137,21 @@ result_t<stream_result> zlib_decompressor::decompress_some(
         return stream_result::done(0, 0);
     }
 
+    // Guard against >4GB buffers which would truncate when cast to mz_uint32
+    constexpr size_t max_chunk = static_cast<size_t>(UINT32_MAX);
+    size_t in_size = std::min(input.size(), max_chunk);
+    size_t out_size = std::min(output.size(), max_chunk);
+
     pimpl_->stream.next_in = input.data();
-    pimpl_->stream.avail_in = static_cast<mz_uint32>(input.size());
+    pimpl_->stream.avail_in = static_cast<mz_uint32>(in_size);
     pimpl_->stream.next_out = output.data();
-    pimpl_->stream.avail_out = static_cast<mz_uint32>(output.size());
+    pimpl_->stream.avail_out = static_cast<mz_uint32>(out_size);
 
     int flush = input_finished ? MZ_FINISH : MZ_NO_FLUSH;
     int status = mz_inflate(&pimpl_->stream, flush);
 
-    size_t bytes_read = input.size() - pimpl_->stream.avail_in;
-    size_t bytes_written = output.size() - pimpl_->stream.avail_out;
+    size_t bytes_read = in_size - pimpl_->stream.avail_in;
+    size_t bytes_written = out_size - pimpl_->stream.avail_out;
 
     if (status == MZ_STREAM_END) {
         pimpl_->finished = true;
@@ -220,16 +228,21 @@ result_t<stream_result> gzip_decompressor::decompress_some(
         return stream_result::done(0, 0);
     }
 
+    // Guard against >4GB buffers which would truncate when cast to mz_uint32
+    constexpr size_t max_chunk = static_cast<size_t>(UINT32_MAX);
+    size_t in_size = std::min(input.size(), max_chunk);
+    size_t out_size = std::min(output.size(), max_chunk);
+
     pimpl_->stream.next_in = input.data();
-    pimpl_->stream.avail_in = static_cast<mz_uint32>(input.size());
+    pimpl_->stream.avail_in = static_cast<mz_uint32>(in_size);
     pimpl_->stream.next_out = output.data();
-    pimpl_->stream.avail_out = static_cast<mz_uint32>(output.size());
+    pimpl_->stream.avail_out = static_cast<mz_uint32>(out_size);
 
     int flush = input_finished ? MZ_FINISH : MZ_NO_FLUSH;
     int status = mz_inflate(&pimpl_->stream, flush);
 
-    size_t bytes_read = input.size() - pimpl_->stream.avail_in;
-    size_t bytes_written = output.size() - pimpl_->stream.avail_out;
+    size_t bytes_read = in_size - pimpl_->stream.avail_in;
+    size_t bytes_written = out_size - pimpl_->stream.avail_out;
 
     if (status == MZ_STREAM_END) {
         pimpl_->finished = true;

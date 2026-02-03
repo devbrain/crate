@@ -1,5 +1,6 @@
 #include <crate/formats/hyp.hh>
 #include <crate/formats/hyp_internal.hh>
+#include <crate/compression/hyp.hh>
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -718,9 +719,17 @@ namespace crate {
                 break;
 
             case hyp::COMPRESSED: {
-                auto result = hyp::decompress_hp(compressed, member.original_size, member.version);
+                hp_decompressor decompressor(member.original_size, member.version);
+                output.resize(member.original_size);
+                auto result = decompressor.decompress_some(
+                    compressed,
+                    mutable_byte_span(output.data(), output.size()),
+                    true
+                );
                 if (!result) return std::unexpected(result.error());
-                output = std::move(*result);
+                if (result->bytes_written != member.original_size) {
+                    return std::unexpected(error{error_code::CorruptData, "Incomplete HYP decompression"});
+                }
                 break;
             }
 

@@ -3,6 +3,7 @@
 #include <crate/core/crc.hh>
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstring>
 #include <ctime>
 #include <tuple>
@@ -10,6 +11,12 @@
 #include <vector>
 
 namespace crate {
+
+namespace {
+    // Maximum size for a single file extraction to prevent zip bomb attacks
+    // 1GB is a reasonable limit for in-memory extraction
+    constexpr size_t MAX_EXTRACTION_SIZE = 1ULL * 1024 * 1024 * 1024;
+}
 
 namespace lha {
     // Compression method identifiers
@@ -531,18 +538,19 @@ namespace lha {
             u8* p = ringbuf.data();
 
             // For each byte value, include a run of 13 bytes with that value
+            // Total: 256 * 13 = 3328 bytes
             for (int i = 0; i < 256; i++) {
                 for (int j = 0; j < 13; j++) {
                     *p++ = static_cast<u8>(i);
                 }
             }
 
-            // All byte values ascending
+            // All byte values ascending: 256 bytes
             for (int i = 0; i < 256; i++) {
                 *p++ = static_cast<u8>(i);
             }
 
-            // All byte values descending
+            // All byte values descending: 256 bytes
             for (int i = 0; i < 256; i++) {
                 *p++ = static_cast<u8>(255 - i);
             }
@@ -561,6 +569,10 @@ namespace lha {
             for (int i = 0; i < 18; i++) {
                 *p++ = 0;
             }
+
+            // Safety check: verify we wrote exactly RING_SIZE bytes
+            // 3328 + 256 + 256 + 128 + 110 + 18 = 4096 = RING_SIZE
+            assert(p == ringbuf.data() + RING_SIZE);
         }
     };
 
@@ -1267,6 +1279,12 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
 
     if (member.is_directory()) {
         return byte_vector{};
+    }
+
+    // Guard against zip bombs - reject unreasonably large allocations
+    if (member.original_size > MAX_EXTRACTION_SIZE) {
+        return std::unexpected(error{error_code::AllocationLimitExceeded,
+            "Uncompressed size exceeds maximum allowed (" + std::to_string(member.original_size) + " bytes)"});
     }
 
     if (entry.folder_offset + member.compressed_size > m_pimpl->data_.size()) {

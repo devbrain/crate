@@ -6,6 +6,13 @@
 #include <cstring>
 
 namespace crate {
+
+    namespace {
+        // Maximum size for a single file extraction to prevent zip bomb attacks
+        // 1GB is a reasonable limit for in-memory extraction
+        constexpr size_t MAX_EXTRACTION_SIZE = 1ULL * 1024 * 1024 * 1024;
+    }
+
     namespace arj {
         constexpr u8 SIGNATURE[] = {0x60, 0xEA};
         constexpr size_t MIN_HEADER_SIZE = 30;
@@ -126,6 +133,12 @@ namespace crate {
     const std::vector <file_entry>& arj_archive::files() const { return m_pimpl->files_; }
 
     result_t <byte_vector> arj_archive::extract(const file_entry& entry) {
+        // Guard against zip bombs - reject unreasonably large allocations
+        if (entry.uncompressed_size > MAX_EXTRACTION_SIZE) {
+            return std::unexpected(error{error_code::AllocationLimitExceeded,
+                "Uncompressed size exceeds maximum allowed (" + std::to_string(entry.uncompressed_size) + " bytes)"});
+        }
+
         vector_output_stream output(entry.uncompressed_size);
         auto result = extract_to(entry, output);
         if (!result) return std::unexpected(result.error());

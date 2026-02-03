@@ -14,6 +14,11 @@
 #include <vector>
 
 namespace crate {
+
+namespace {
+    // Maximum size for a single file extraction to prevent archive bomb attacks
+    constexpr size_t MAX_EXTRACTION_SIZE = 1ULL * 1024 * 1024 * 1024; // 1GB
+}
     namespace rar {
         struct file_info {
             std::string filename;
@@ -193,6 +198,15 @@ void_result_t rar_archive::gather_compressed_data(const rar::file_info& member, 
 void_result_t rar_archive::decompress_solid(int file_index, byte_span compressed, mutable_byte_span output) const {
     std::lock_guard<std::mutex> lock(pimpl_->solid_mutex);
 
+    // Handle backward seek: if we're extracting a file before our current position,
+    // we need to reset the decompressor and start from the beginning
+    if (file_index <= pimpl_->solid_last_extracted) {
+        // Reset the decompressor state
+        pimpl_->solid_decomp_v5.reset();
+        pimpl_->solid_decomp_v4.reset();
+        pimpl_->solid_last_extracted = -1;
+    }
+
     // Process any missing preceding files to build up the dictionary
     for (int i = pimpl_->solid_last_extracted + 1; i < file_index; i++) {
         const auto& prev_member = pimpl_->members_[static_cast<size_t>(i)];
@@ -219,6 +233,11 @@ void_result_t rar_archive::decompress_solid(int file_index, byte_span compressed
         }
 
         // Decompress to build dictionary (output is discarded)
+        // Guard against archive bombs
+        if (prev_member.original_size > MAX_EXTRACTION_SIZE) {
+            return std::unexpected(error{error_code::AllocationLimitExceeded,
+                "Previous file in solid archive exceeds maximum allowed size"});
+        }
         byte_vector dummy(prev_member.original_size);
         result_t<size_t> result;
 
@@ -1290,6 +1309,12 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
         if (!decrypt_result) {
             return std::unexpected(decrypt_result.error());
         }
+    }
+
+    // Guard against archive bombs - reject unreasonably large allocations
+    if (member.original_size > MAX_EXTRACTION_SIZE) {
+        return std::unexpected(error{error_code::AllocationLimitExceeded,
+            "Uncompressed size exceeds maximum allowed (" + std::to_string(member.original_size) + " bytes)"});
     }
 
     byte_vector output(member.original_size);
