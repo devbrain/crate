@@ -4,7 +4,7 @@ namespace crate {
 
 result_t<std::unique_ptr<lzx_decompressor>> lzx_decompressor::create(unsigned window_bits, lzx_mode mode) {
     if (window_bits < lzx::MIN_WINDOW_BITS || window_bits > lzx::MAX_WINDOW_BITS) {
-        return std::unexpected(error{error_code::InvalidParameter, "LXZ window_bits must be 15-21"});
+        return crate::make_unexpected(error{error_code::InvalidParameter, "LXZ window_bits must be 15-21"});
     }
     return std::make_unique<lzx_decompressor>(window_bits, mode);
 }
@@ -26,7 +26,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
     byte* out_ptr = output.data();
 
     if (!expected_output_set()) {
-        return std::unexpected(error{
+        return crate::make_unexpected(error{
             error_code::InvalidParameter,
             "Expected size required for bounded decompression"
         });
@@ -161,7 +161,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 } else if (block_type_ == lzx::BLOCKTYPE_UNCOMPRESSED) {
                     state_ = state::UNCOMPRESSED_ALIGN;
                 } else {
-                    return std::unexpected(error{error_code::InvalidBlockType,
+                    return crate::make_unexpected(error{error_code::InvalidBlockType,
                         "Invalid LZX block type: " + std::to_string(block_type_)});
                 }
                 break;
@@ -177,7 +177,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 }
                 auto result = aligned_decoder_.build_msb(aligned_lengths_);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 start_tree_reader(main_lengths_.data(), 0, lzx::NUM_CHARS);
                 state_ = state::READ_MAIN_TREE_0;
@@ -187,7 +187,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
             case state::READ_MAIN_TREE_0: {
                 auto result = advance_tree_reader(in_ptr, in_end);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 if (!*result) {
                     goto need_input;
@@ -201,7 +201,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
             case state::READ_MAIN_TREE_1: {
                 auto result = advance_tree_reader(in_ptr, in_end);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 if (!*result) {
                     goto need_input;
@@ -210,7 +210,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
 
                 auto build = main_decoder_.build_msb(std::span(main_lengths_.data(), main_tree_size));
                 if (!build) {
-                    return std::unexpected(build.error());
+                    return crate::make_unexpected(build.error());
                 }
                 start_tree_reader(length_lengths_.data(), 0, lzx::NUM_SECONDARY_LENGTHS);
                 state_ = state::READ_LENGTH_TREE;
@@ -220,7 +220,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
             case state::READ_LENGTH_TREE: {
                 auto result = advance_tree_reader(in_ptr, in_end);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 if (!*result) {
                     goto need_input;
@@ -233,7 +233,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 }
                 auto build = length_decoder_.build_msb(length_lengths_);
                 if (!build) {
-                    return std::unexpected(build.error());
+                    return crate::make_unexpected(build.error());
                 }
                 state_ = state::DECODE_MAIN_SYMBOL;
                 break;
@@ -251,7 +251,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
 
                 auto decode = try_decode(main_decoder_, main_symbol_, in_ptr, in_end);
                 if (!decode) {
-                    return std::unexpected(decode.error());
+                    return crate::make_unexpected(decode.error());
                 }
                 if (!*decode) {
                     goto need_input;
@@ -317,7 +317,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 u16 len_sym = 0;
                 auto decode = try_decode(length_decoder_, len_sym, in_ptr, in_end);
                 if (!decode) {
-                    return std::unexpected(decode.error());
+                    return crate::make_unexpected(decode.error());
                 }
                 if (!*decode) {
                     goto need_input;
@@ -389,7 +389,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 u16 aligned_sym = 0;
                 auto decode = try_decode(aligned_decoder_, aligned_sym, in_ptr, in_end);
                 if (!decode) {
-                    return std::unexpected(decode.error());
+                    return crate::make_unexpected(decode.error());
                 }
                 if (!*decode) {
                     goto need_input;
@@ -495,7 +495,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
 
 need_input:
     if (input_finished) {
-        return std::unexpected(error{error_code::InputBufferUnderflow});
+        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
     }
     return finalize(decode_status::needs_more_input);
 
@@ -736,7 +736,7 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
             case tree_state::BUILD_PRETREE: {
                 auto result = pretree_decoder_.build_msb(pretree_lengths_);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 tree_state_ = tree_state::DECODE_LENGTHS;
                 break;
@@ -778,7 +778,7 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
                         u16 z = 0;
                         auto decode = try_decode(pretree_decoder_, z, ptr, end);
                         if (!decode) {
-                            return std::unexpected(decode.error());
+                            return crate::make_unexpected(decode.error());
                         }
                         if (!*decode) {
                             return false;
@@ -795,7 +795,7 @@ result_t <bool> lzx_decompressor::advance_tree_reader(const byte*& ptr, const by
                     u16 sym = 0;
                     auto decode = try_decode(pretree_decoder_, sym, ptr, end);
                     if (!decode) {
-                        return std::unexpected(decode.error());
+                        return crate::make_unexpected(decode.error());
                     }
                     if (!*decode) {
                         return false;

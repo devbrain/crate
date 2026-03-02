@@ -38,7 +38,7 @@ public:
     /// @return Decompressor or error if window_bits is invalid
     static result_t<std::unique_ptr<quantum_decompressor>> create(unsigned window_bits) {
         if (window_bits < quantum::MIN_WINDOW_BITS || window_bits > quantum::MAX_WINDOW_BITS) {
-            return std::unexpected(error{error_code::InvalidParameter, "Quantum window_bits must be 10-21"});
+            return crate::make_unexpected(error{error_code::InvalidParameter, "Quantum window_bits must be 10-21"});
         }
         return std::unique_ptr<quantum_decompressor>(new quantum_decompressor(window_bits));
     }
@@ -58,7 +58,7 @@ public:
         const byte* in_end = input.data() + input.size();
         byte* out_ptr = output.data();
         if (!expected_output_set()) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidParameter,
                 "Expected size required for bounded decompression"
             });
@@ -114,7 +114,7 @@ public:
                     while (init_bytes_read_ < 2) {
                         if (in_ptr >= in_end) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             goto need_input;
                         }
@@ -256,7 +256,7 @@ public:
 
     need_input:
         if (input_finished) {
-            return std::unexpected(error{error_code::InputBufferUnderflow});
+            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
         }
         return finalize(decode_status::needs_more_input);
 

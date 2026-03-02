@@ -41,7 +41,7 @@ result_t<stream_result> bzip2_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!pimpl_->initialized) {
-        return std::unexpected(error{error_code::CorruptData, "bzip2 initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "bzip2 initialization failed"});
     }
 
     if (pimpl_->finished) {
@@ -74,13 +74,13 @@ result_t<stream_result> bzip2_decompressor::decompress_some(
             case BZ_DATA_ERROR_MAGIC: err_msg = "invalid magic number"; break;
             case BZ_MEM_ERROR: err_msg = "memory allocation failed"; break;
         }
-        return std::unexpected(error{error_code::CorruptData,
+        return crate::make_unexpected(error{error_code::CorruptData,
             std::string("bzip2 decompression failed: ") + err_msg});
     }
 
     // BZ_OK - continue decompressing
     if (input_finished && bytes_read == 0 && bytes_written == 0) {
-        return std::unexpected(error{error_code::CorruptData, "Unexpected end of bzip2 input"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Unexpected end of bzip2 input"});
     }
 
     if (bytes_written > 0) {

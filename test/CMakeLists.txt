@@ -44,6 +44,7 @@ add_executable(crate_tests
 
 target_link_libraries(crate_tests PRIVATE
     doctest::doctest
+    tl::expected
     $<$<BOOL:${NEUTRINO_CRATE_WITH_LIBARCHIVE}>:archive>
     $<$<BOOL:${NEUTRINO_CRATE_WITH_ZSTD}>:$<IF:$<BOOL:${NEUTRINO_CRATE_BUILD_SHARED}>,libzstd_shared,libzstd_static>>
     $<$<BOOL:${NEUTRINO_CRATE_WITH_BROTLI}>:brotlidec>
@@ -51,7 +52,7 @@ target_link_libraries(crate_tests PRIVATE
     $<$<BOOL:${NEUTRINO_CRATE_WITH_XZ}>:liblzma>
 )
 
-target_compile_features(crate_tests PRIVATE cxx_std_23)
+target_compile_features(crate_tests PRIVATE cxx_std_20)
 
 target_include_directories(crate_tests PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}"

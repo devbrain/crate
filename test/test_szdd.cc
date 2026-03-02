@@ -14,12 +14,12 @@ using namespace crate::test;
 // Helper to decompress SZDD data
 static result_t<byte_vector> decompress_szdd(byte_span data) {
     auto header = szdd_decompressor::parse_header(data);
-    if (!header) return std::unexpected(header.error());
+    if (!header) return crate::make_unexpected(header.error());
 
     byte_vector output(header->uncompressed_size);
     szdd_decompressor decompressor;
     auto result = decompressor.decompress(data, output);
-    if (!result) return std::unexpected(result.error());
+    if (!result) return crate::make_unexpected(result.error());
 
     output.resize(*result);
     return output;
@@ -313,7 +313,7 @@ TEST_SUITE("SzddFullStreaming") {
         std::vector<u8> expected = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'};
 
         // Test various chunk sizes
-        for (size_t chunk_size : {1uz, 2uz, 3uz, 5uz, 7uz, 10uz, 14uz, 15uz, 20uz}) {
+        for (size_t chunk_size : {size_t(1), size_t(2), size_t(3), size_t(5), size_t(7), size_t(10), size_t(14), size_t(15), size_t(20)}) {
             CAPTURE(chunk_size);
             szdd_decompressor dec;
             byte_vector output(expected.size() + 16);
@@ -348,7 +348,7 @@ TEST_SUITE("SzddFullStreaming") {
         std::vector<u8> expected = {'Q', 'B', 'A', 'S', 'I', 'C', '!', '!'};
 
         // Test various chunk sizes including split across header
-        for (size_t chunk_size : {1uz, 2uz, 3uz, 5uz, 7uz, 11uz, 12uz, 15uz}) {
+        for (size_t chunk_size : {size_t(1), size_t(2), size_t(3), size_t(5), size_t(7), size_t(11), size_t(12), size_t(15)}) {
             CAPTURE(chunk_size);
             szdd_decompressor dec;
             byte_vector output(expected.size() + 16);
@@ -414,7 +414,7 @@ TEST_SUITE("SzddFullStreaming") {
         auto data = make_szdd_data(lzss_content, static_cast<u32>(expected.size()));
 
         // Use streaming test framework approach
-        for (size_t chunk_size : {1uz, 2uz, 3uz, 5uz, 7uz, 11uz, 13uz, 17uz, 32uz, 64uz}) {
+        for (size_t chunk_size : {size_t(1), size_t(2), size_t(3), size_t(5), size_t(7), size_t(11), size_t(13), size_t(17), size_t(32), size_t(64)}) {
             CAPTURE(chunk_size);
             szdd_decompressor dec;
             byte_vector output(expected.size() + 128);

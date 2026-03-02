@@ -618,7 +618,7 @@ result_t<stream_result> stuffit_method13_decompressor::decompress_some(
                 } else if (code_type_ >= 1 && code_type_ <= 5) {
                     state_ = state::BUILD_STATIC_TABLES;
                 } else {
-                    return std::unexpected(error{error_code::CorruptData, "Invalid method 13 code type"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid method 13 code type"});
                 }
                 break;
             }
@@ -645,7 +645,7 @@ result_t<stream_result> stuffit_method13_decompressor::decompress_some(
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 if (result < 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Failed to parse first code table"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to parse first code table"});
                 }
                 state_ = state::PARSE_SECOND_CODE;
                 break;
@@ -661,7 +661,7 @@ result_t<stream_result> stuffit_method13_decompressor::decompress_some(
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
                     if (result < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Failed to parse second code table"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to parse second code table"});
                     }
                     state_ = state::PARSE_OFFSET_CODE;
                 }
@@ -674,7 +674,7 @@ result_t<stream_result> stuffit_method13_decompressor::decompress_some(
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 if (result < 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Failed to parse offset code table"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to parse offset code table"});
                 }
                 state_ = state::DECODE_SYMBOL;
                 break;
@@ -691,7 +691,7 @@ result_t<stream_result> stuffit_method13_decompressor::decompress_some(
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
-                    return std::unexpected(error{error_code::CorruptData, "Invalid Huffman code"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid Huffman code"});
                 }
 
                 if (sym < 0x100) {
@@ -748,7 +748,7 @@ result_t<stream_result> stuffit_method13_decompressor::decompress_some(
                     if (bit_len == -1) {
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
-                    return std::unexpected(error{error_code::CorruptData, "Invalid offset code"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid offset code"});
                 }
 
                 if (bit_len == 0) {

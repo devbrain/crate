@@ -11,7 +11,7 @@ using namespace crate;
 // Helper to decompress KWAJ data
 static result_t<byte_vector> decompress_kwaj(byte_span data) {
     auto header = kwaj_decompressor::parse_header(data);
-    if (!header) return std::unexpected(header.error());
+    if (!header) return crate::make_unexpected(header.error());
 
     // Estimate output size - use decompressed_len if available, otherwise use a reasonable default
     size_t output_size = header->decompressed_len > 0 ? header->decompressed_len : data.size() * 10;
@@ -20,7 +20,7 @@ static result_t<byte_vector> decompress_kwaj(byte_span data) {
     byte_vector output(output_size);
     kwaj_decompressor decompressor;
     auto result = decompressor.decompress(data, output);
-    if (!result) return std::unexpected(result.error());
+    if (!result) return crate::make_unexpected(result.error());
 
     output.resize(*result);
     return output;
@@ -199,14 +199,14 @@ TEST_SUITE("KwajDecompressor - Basic") {
 // Helper to load a KWAJ file
 static result_t<byte_vector> load_kwaj_file(const std::filesystem::path& path) {
     auto file = file_input_stream::open(path);
-    if (!file) return std::unexpected(file.error());
+    if (!file) return crate::make_unexpected(file.error());
 
     auto size = file->size();
-    if (!size) return std::unexpected(size.error());
+    if (!size) return crate::make_unexpected(size.error());
 
     byte_vector data(*size);
     auto read = file->read(data);
-    if (!read) return std::unexpected(read.error());
+    if (!read) return crate::make_unexpected(read.error());
 
     return data;
 }

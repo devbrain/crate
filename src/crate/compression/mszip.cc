@@ -163,7 +163,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                     goto need_input;
                 }
                 if (byte_val != 'C') {
-                    return std::unexpected(error{error_code::InvalidSignature,
+                    return crate::make_unexpected(error{error_code::InvalidSignature,
                         "Missing MSZIP 'CK' signature"});
                 }
                 state_ = state::READ_SIGNATURE_1;
@@ -174,7 +174,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                     goto need_input;
                 }
                 if (byte_val != 'K') {
-                    return std::unexpected(error{error_code::InvalidSignature,
+                    return crate::make_unexpected(error{error_code::InvalidSignature,
                         "Missing MSZIP 'CK' signature"});
                 }
                 state_ = state::READ_BLOCK_HEADER;
@@ -198,7 +198,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                         state_ = state::READ_HLIT;
                         break;
                     default:
-                        return std::unexpected(error{error_code::InvalidBlockType,
+                        return crate::make_unexpected(error{error_code::InvalidBlockType,
                             "Reserved block type 3"});
                 }
                 break;
@@ -241,7 +241,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                 }
                 u16 nlen = stored_remaining_ | (static_cast<u16>(byte_val) << 8);
                 if ((stored_len_ ^ nlen) != 0xFFFF) {
-                    return std::unexpected(error{error_code::CorruptData,
+                    return crate::make_unexpected(error{error_code::CorruptData,
                         "Invalid stored block length"});
                 }
                 stored_remaining_ = stored_len_;
@@ -317,7 +317,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
             case state::BUILD_CODE_LEN_TABLE: {
                 auto result = code_len_decoder_.build(code_len_lengths_);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 all_lengths_.resize(hlit_ + hdist_);
                 std::fill(all_lengths_.begin(), all_lengths_.end(), 0);
@@ -374,12 +374,12 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                 auto lit_result = literal_decoder_.build(
                     std::span(all_lengths_.data(), hlit_));
                 if (!lit_result) {
-                    return std::unexpected(lit_result.error());
+                    return crate::make_unexpected(lit_result.error());
                 }
                 auto dist_result = distance_decoder_.build(
                     std::span(all_lengths_.data() + hlit_, hdist_));
                 if (!dist_result) {
-                    return std::unexpected(dist_result.error());
+                    return crate::make_unexpected(dist_result.error());
                 }
                 state_ = state::DECODE_SYMBOL;
                 break;
@@ -412,7 +412,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                     // Length code
                     unsigned len_idx = symbol - 257;
                     if (len_idx >= deflate::length_base.size()) {
-                        return std::unexpected(error{error_code::InvalidMatchLength});
+                        return crate::make_unexpected(error{error_code::InvalidMatchLength});
                     }
                     match_length_ = deflate::length_base[len_idx];
 
@@ -441,7 +441,7 @@ result_t<stream_result> mszip_decompressor::decompress_some(
                     goto need_input;
                 }
                 if (symbol >= deflate::distance_base.size()) {
-                    return std::unexpected(error{error_code::InvalidMatchDistance});
+                    return crate::make_unexpected(error{error_code::InvalidMatchDistance});
                 }
                 match_distance_ = deflate::distance_base[symbol];
 
@@ -505,7 +505,7 @@ need_input:
             size_t bytes_read = static_cast<size_t>(in_ptr - input.data());
             return stream_result::done(bytes_read, out_pos);
         }
-        return std::unexpected(error{error_code::TruncatedArchive,
+        return crate::make_unexpected(error{error_code::TruncatedArchive,
             "Unexpected end of MSZIP data"});
     }
     {

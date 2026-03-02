@@ -116,13 +116,13 @@ floppy_image::~floppy_image() = default;
 
 result_t<std::unique_ptr<floppy_image>> floppy_image::open(byte_span data) {
     if (data.size() < 512) {
-        return std::unexpected(error{error_code::TruncatedArchive, "Image too small"});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "Image too small"});
     }
 
     // Parse BPB
     auto bpb_result = fs::parse_bpb(data);
     if (!bpb_result) {
-        return std::unexpected(bpb_result.error());
+        return crate::make_unexpected(bpb_result.error());
     }
 
     auto image = std::unique_ptr<floppy_image>(new floppy_image());
@@ -135,7 +135,7 @@ result_t<std::unique_ptr<floppy_image>> floppy_image::open(byte_span data) {
     u32 fat_size = bpb.sectors_per_fat * bpb.bytes_per_sector;
 
     if (bpb.fat_offset + fat_size > image->impl_->data.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive, "FAT table truncated"});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "FAT table truncated"});
     }
 
     byte_span fat_data(image->impl_->data.data() + bpb.fat_offset, fat_size);
@@ -150,18 +150,18 @@ result_t<std::unique_ptr<floppy_image>> floppy_image::open(byte_span data) {
 result_t<std::unique_ptr<floppy_image>> floppy_image::open(const std::filesystem::path& path) {
     auto file = file_input_stream::open(path);
     if (!file) {
-        return std::unexpected(file.error());
+        return crate::make_unexpected(file.error());
     }
 
     auto size = file->size();
     if (!size) {
-        return std::unexpected(size.error());
+        return crate::make_unexpected(size.error());
     }
 
     byte_vector data(*size);
     auto read_result = file->read(data);
     if (!read_result) {
-        return std::unexpected(read_result.error());
+        return crate::make_unexpected(read_result.error());
     }
 
     return open(data);
@@ -173,7 +173,7 @@ const std::vector<file_entry>& floppy_image::files() const {
 
 result_t<byte_vector> floppy_image::extract(const file_entry& entry) {
     if (entry.folder_index >= impl_->internal_entries.size()) {
-        return std::unexpected(error{error_code::FileNotInArchive});
+        return crate::make_unexpected(error{error_code::FileNotInArchive});
     }
 
     const auto& ie = impl_->internal_entries[entry.folder_index];
@@ -188,13 +188,13 @@ result_t<byte_vector> floppy_image::extract(const file_entry& entry) {
 
     // File with no clusters (shouldn't happen for non-empty files)
     if (ie.first_cluster < 2) {
-        return std::unexpected(error{error_code::CorruptData, "File has no cluster chain"});
+        return crate::make_unexpected(error{error_code::CorruptData, "File has no cluster chain"});
     }
 
     // Read cluster chain
     auto chain = impl_->fat->chain(ie.first_cluster);
     if (chain.empty()) {
-        return std::unexpected(error{error_code::CorruptData, "Empty cluster chain"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Empty cluster chain"});
     }
 
     byte_vector result;
@@ -205,7 +205,7 @@ result_t<byte_vector> floppy_image::extract(const file_entry& entry) {
     for (u32 cluster : chain) {
         auto cluster_data = impl_->read_cluster(cluster);
         if (cluster_data.empty()) {
-            return std::unexpected(error{error_code::CorruptData, "Invalid cluster"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Invalid cluster"});
         }
 
         u32 to_copy = std::min(remaining, static_cast<u32>(cluster_data.size()));
@@ -223,7 +223,7 @@ result_t<byte_vector> floppy_image::extract(const file_entry& entry) {
     }
 
     if (result.size() != ie.size) {
-        return std::unexpected(error{error_code::CorruptData,
+        return crate::make_unexpected(error{error_code::CorruptData,
             "File size mismatch: expected " + std::to_string(ie.size) +
             ", got " + std::to_string(result.size())});
     }

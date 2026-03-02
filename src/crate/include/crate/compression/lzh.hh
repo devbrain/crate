@@ -43,7 +43,7 @@ public:
         }
 
         if (max_length_ == 0) {
-            return std::unexpected(error{error_code::InvalidHuffmanTable, "Empty Huffman tree"});
+            return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Empty Huffman tree"});
         }
 
         // Try lookup table first (8 bits) - but only if we have enough bits
@@ -79,7 +79,7 @@ public:
             }
         }
 
-        return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to decode Huffman symbol"});
+        return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to decode Huffman symbol"});
     }
 
     // Legacy decode for non-streaming use
@@ -92,7 +92,7 @@ public:
         // Try lookup table first (8 bits)
         auto peek = bs.peek_bits(8);
         if (!peek)
-            return std::unexpected(peek.error());
+            return crate::make_unexpected(peek.error());
 
         u16 entry = lookup_[*peek];
         if (entry != 0xFFFF) {
@@ -107,7 +107,7 @@ public:
         for (unsigned len = 1; len <= max_length_; len++) {
             auto bit = bs.read_bit();
             if (!bit)
-                return std::unexpected(bit.error());
+                return crate::make_unexpected(bit.error());
             code = (code << 1) | (*bit ? 1 : 0);
 
             // Search for matching code
@@ -118,7 +118,7 @@ public:
             }
         }
 
-        return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to decode Huffman symbol"});
+        return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to decode Huffman symbol"});
     }
 
 private:

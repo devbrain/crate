@@ -74,21 +74,21 @@ namespace {
         archive->pimpl_->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <cab_archive>> cab_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -107,15 +107,15 @@ namespace {
 
         // Guard against cab bombs - reject unreasonably large allocations
         if (folder_size > MAX_FOLDER_SIZE) {
-            return std::unexpected(error{error_code::AllocationLimitExceeded,
+            return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
                 "Folder size exceeds maximum allowed (" + std::to_string(folder_size) + " bytes)"});
         }
 
         auto folder_data = decompress_folder(entry.folder_index, folder_size);
-        if (!folder_data) return std::unexpected(folder_data.error());
+        if (!folder_data) return crate::make_unexpected(folder_data.error());
 
         if (entry.folder_offset + entry.uncompressed_size > folder_data->size()) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::CorruptData,
                 "File extends beyond folder data"
             });
@@ -134,13 +134,13 @@ namespace {
 
     void_result_t cab_archive::parse() {
         auto result = parse_header();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         result = parse_folders();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         result = parse_files();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return {};
     }
@@ -148,11 +148,11 @@ namespace {
     void_result_t cab_archive::parse_header() {
         // Check signature first (only need 4 bytes)
         if (pimpl_->data_.size() < 4 || std::memcmp(pimpl_->data_.data(), cab::SIGNATURE, 4) != 0) {
-            return std::unexpected(error{error_code::InvalidSignature, "Not a valid CAB file"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Not a valid CAB file"});
         }
 
         if (pimpl_->data_.size() < cab::HEADER_SIZE) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         const u8* p = pimpl_->data_.data() + 8;
@@ -177,7 +177,7 @@ namespace {
 
         if (pimpl_->header_.flags & cab::RESERVE_PRESENT) {
             if (p + 4 > pimpl_->data_.data() + pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             pimpl_->header_.header_reserve_size = read_u16_le(p);
             p += 2;
@@ -201,14 +201,14 @@ namespace {
             while (offset < pimpl_->data_.size() && pimpl_->data_[offset])
                 offset++;
             if (offset >= pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive, "Truncated previous cabinet name"});
+                return crate::make_unexpected(error{error_code::TruncatedArchive, "Truncated previous cabinet name"});
             }
             offset++; // null terminator
             // Skip disk name (null-terminated string)
             while (offset < pimpl_->data_.size() && pimpl_->data_[offset])
                 offset++;
             if (offset >= pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive, "Truncated previous disk name"});
+                return crate::make_unexpected(error{error_code::TruncatedArchive, "Truncated previous disk name"});
             }
             offset++;
         }
@@ -217,14 +217,14 @@ namespace {
             while (offset < pimpl_->data_.size() && pimpl_->data_[offset])
                 offset++;
             if (offset >= pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive, "Truncated next cabinet name"});
+                return crate::make_unexpected(error{error_code::TruncatedArchive, "Truncated next cabinet name"});
             }
             offset++;
             // Skip disk name (null-terminated string)
             while (offset < pimpl_->data_.size() && pimpl_->data_[offset])
                 offset++;
             if (offset >= pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive, "Truncated next disk name"});
+                return crate::make_unexpected(error{error_code::TruncatedArchive, "Truncated next disk name"});
             }
             offset++;
         }
@@ -232,7 +232,7 @@ namespace {
         pimpl_->folders_.reserve(pimpl_->header_.num_folders);
         for (u16 i = 0; i < pimpl_->header_.num_folders; i++) {
             if (offset + cab::FOLDER_SIZE + pimpl_->header_.folder_reserve_size > pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             const u8* p = pimpl_->data_.data() + offset;
@@ -256,7 +256,7 @@ namespace {
         pimpl_->files_.reserve(pimpl_->header_.num_files);
         for (u16 i = 0; i < pimpl_->header_.num_files; i++) {
             if (offset + cab::FILE_HEADER_SIZE > pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             const u8* p = pimpl_->data_.data() + offset;
@@ -286,7 +286,7 @@ namespace {
             while (offset < pimpl_->data_.size() && pimpl_->data_[offset])
                 offset++;
             if (offset >= pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive, "Truncated filename in file entry"});
+                return crate::make_unexpected(error{error_code::TruncatedArchive, "Truncated filename in file entry"});
             }
             std::string raw_name(reinterpret_cast <const char*>(pimpl_->data_.data() + name_start), offset - name_start);
             // Sanitize filename to prevent directory traversal attacks
@@ -301,7 +301,7 @@ namespace {
 
     result_t <byte_vector> cab_archive::decompress_folder(u32 folder_index, size_t max_size) {
         if (folder_index >= pimpl_->folders_.size()) {
-            return std::unexpected(error{error_code::FolderNotFound});
+            return crate::make_unexpected(error{error_code::FolderNotFound});
         }
 
         // Check cache
@@ -335,7 +335,7 @@ namespace {
                 break;
             }
             default:
-                return std::unexpected(error{error_code::UnsupportedCompression});
+                return crate::make_unexpected(error{error_code::UnsupportedCompression});
         }
 
         byte_vector output;
@@ -345,7 +345,7 @@ namespace {
 
         for (u16 block = 0; block < folder.num_blocks; block++) {
             if (data_offset + cab::DATA_HEADER_SIZE + pimpl_->header_.data_reserve_size > pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             const u8* p = pimpl_->data_.data() + data_offset;
@@ -359,7 +359,7 @@ namespace {
             data_offset += cab::DATA_HEADER_SIZE + pimpl_->header_.data_reserve_size;
 
             if (data_offset + block_hdr.compressed_size > pimpl_->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             byte_span compressed(pimpl_->data_.data() + data_offset, block_hdr.compressed_size);
@@ -370,7 +370,7 @@ namespace {
                 byte_vector block_output(block_hdr.uncompressed_size);
                 auto result = decompressor->decompress(compressed, block_output);
                 if (!result)
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 output.insert(output.end(), block_output.begin(),
                               block_output.begin() + static_cast <std::ptrdiff_t>(*result));
             }

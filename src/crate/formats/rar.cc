@@ -146,7 +146,7 @@ void_result_t rar_archive::decrypt_data(const rar::file_info& member, byte_vecto
     // Ensure data is block-aligned (AES block size = 16)
     size_t aligned_size = data.size() & ~size_t(15);
     if (aligned_size == 0) {
-        return std::unexpected(error{error_code::CorruptData, "Encrypted data too small"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Encrypted data too small"});
     }
 
     // Decrypt in-place
@@ -165,13 +165,13 @@ void_result_t rar_archive::gather_compressed_data(const rar::file_info& member, 
         out.reserve(member.compressed_size);
         for (const auto& part : member.parts) {
             if (part.volume_num >= pimpl_->volumes_.size()) {
-                return std::unexpected(
+                return crate::make_unexpected(
                     error{error_code::TruncatedArchive, "Missing volume " + std::to_string(part.volume_num + 1)});
             }
             const auto& vol = pimpl_->volumes_[part.volume_num];
             size_t vol_size = vol.size();
             if (part.data_pos > vol_size || part.compressed_size > vol_size - static_cast<size_t>(part.data_pos)) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             auto start = vol.begin() + static_cast<std::vector<u8>::difference_type>(part.data_pos);
             auto end = start + static_cast<std::vector<u8>::difference_type>(part.compressed_size);
@@ -183,12 +183,12 @@ void_result_t rar_archive::gather_compressed_data(const rar::file_info& member, 
     // Single-part file (backward compat)
     unsigned vol_num = member.start_volume;
     if (vol_num >= pimpl_->volumes_.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive, "Missing volume " + std::to_string(vol_num + 1)});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "Missing volume " + std::to_string(vol_num + 1)});
     }
     const auto& vol = pimpl_->volumes_[vol_num];
     size_t vol_size = vol.size();
     if (member.data_pos > vol_size || member.compressed_size > vol_size - static_cast<size_t>(member.data_pos)) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
     auto start = vol.begin() + static_cast<std::vector<u8>::difference_type>(member.data_pos);
     auto end = start + static_cast<std::vector<u8>::difference_type>(member.compressed_size);
@@ -221,7 +221,7 @@ void_result_t rar_archive::decompress_solid(int file_index, byte_span compressed
 
         // Skip encrypted files - we can't process them
         if (prev_member.is_encrypted) {
-            return std::unexpected(
+            return crate::make_unexpected(
                 error{error_code::UnsupportedCompression, "Cannot extract solid archive: preceding file is encrypted"});
         }
 
@@ -229,13 +229,13 @@ void_result_t rar_archive::decompress_solid(int file_index, byte_span compressed
         byte_vector prev_compressed;
         auto gather_result = gather_compressed_data(prev_member, prev_compressed);
         if (!gather_result) {
-            return std::unexpected(gather_result.error());
+            return crate::make_unexpected(gather_result.error());
         }
 
         // Decompress to build dictionary (output is discarded)
         // Guard against archive bombs
         if (prev_member.original_size > MAX_EXTRACTION_SIZE) {
-            return std::unexpected(error{error_code::AllocationLimitExceeded,
+            return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
                 "Previous file in solid archive exceeds maximum allowed size"});
         }
         byte_vector dummy(prev_member.original_size);
@@ -256,7 +256,7 @@ void_result_t rar_archive::decompress_solid(int file_index, byte_span compressed
         }
 
         if (!result) {
-            return std::unexpected(result.error());
+            return crate::make_unexpected(result.error());
         }
     }
 
@@ -278,11 +278,11 @@ void_result_t rar_archive::decompress_solid(int file_index, byte_span compressed
     }
 
     if (!result) {
-        return std::unexpected(result.error());
+        return crate::make_unexpected(result.error());
     }
 
     if (*result != output.size()) {
-        return std::unexpected(error{error_code::CorruptData, "Decompressed size mismatch"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Decompressed size mismatch"});
     }
 
     pimpl_->solid_last_extracted = file_index;
@@ -364,7 +364,7 @@ void_result_t rar_archive::parse_remaining_volumes() {
 void_result_t rar_archive::detect_and_parse() {
     const auto& vol = pimpl_->volumes_[0];
     if (vol.size() < 8) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     // Try signature at offset 0 first (fast path)
@@ -400,14 +400,14 @@ void_result_t rar_archive::detect_and_parse() {
         }
     }
 
-    return std::unexpected(error{error_code::InvalidSignature, "Not a valid RAR file"});
+    return crate::make_unexpected(error{error_code::InvalidSignature, "Not a valid RAR file"});
 }
 void_result_t rar_archive::parse_old() {
     const auto& vol = data();
     size_t pos = pimpl_->sfx_offset_ + 4;  // Skip SFX stub + signature
 
     if (pos + 2 > vol.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     u16 hdr_len = read_u16_le(vol.data() + pos);
@@ -604,7 +604,7 @@ void_result_t rar_archive::parse_v4_impl(size_t start_pos, bool) {
 
         // Ensure we have a valid block size (at least the header we already read)
         if (size1 < 7) {
-            return std::unexpected(error{error_code::InvalidHeader, "Invalid RAR block size"});
+            return crate::make_unexpected(error{error_code::InvalidHeader, "Invalid RAR block size"});
         }
 
         u32 size2 = 0;
@@ -1108,7 +1108,7 @@ result_t<byte_vector> rar_archive::decompress_service_data(byte_span compressed,
 
     auto result = decomp.decompress(compressed, output);
     if (!result) {
-        return std::unexpected(result.error());
+        return crate::make_unexpected(result.error());
     }
 
     output.resize(*result);
@@ -1188,23 +1188,23 @@ result_t<std::unique_ptr<rar_archive>> rar_archive::open(byte_span data) {
 
     auto result = archive->detect_and_parse();
     if (!result)
-        return std::unexpected(result.error());
+        return crate::make_unexpected(result.error());
 
     return archive;
 }
 result_t<std::unique_ptr<rar_archive>> rar_archive::open(const std::filesystem::path& path) {
     auto file = file_input_stream::open(path);
     if (!file)
-        return std::unexpected(file.error());
+        return crate::make_unexpected(file.error());
 
     auto size = file->size();
     if (!size)
-        return std::unexpected(size.error());
+        return crate::make_unexpected(size.error());
 
     byte_vector data(*size);
     auto read = file->read(data);
     if (!read)
-        return std::unexpected(read.error());
+        return crate::make_unexpected(read.error());
 
     return open(data);
 }
@@ -1215,28 +1215,28 @@ result_t<std::unique_ptr<rar_archive>> rar_archive::open(byte_span first_volume,
 
     auto result = archive->detect_and_parse();
     if (!result)
-        return std::unexpected(result.error());
+        return crate::make_unexpected(result.error());
 
     // Parse additional volumes if needed
     auto mv_result = archive->parse_remaining_volumes();
     if (!mv_result)
-        return std::unexpected(mv_result.error());
+        return crate::make_unexpected(mv_result.error());
 
     return archive;
 }
 result_t<std::unique_ptr<rar_archive>> rar_archive::open_multivolume(const std::filesystem::path& path) {
     auto file = file_input_stream::open(path);
     if (!file)
-        return std::unexpected(file.error());
+        return crate::make_unexpected(file.error());
 
     auto size = file->size();
     if (!size)
-        return std::unexpected(size.error());
+        return crate::make_unexpected(size.error());
 
     byte_vector data(*size);
     auto read = file->read(data);
     if (!read)
-        return std::unexpected(read.error());
+        return crate::make_unexpected(read.error());
 
     return open(data, rar::make_file_volume_provider(path));
 }
@@ -1245,7 +1245,7 @@ const std::vector<file_entry>& rar_archive::files() const {
 }
 result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
     if (entry.folder_index >= pimpl_->members_.size()) {
-        return std::unexpected(error{error_code::FileNotInArchive});
+        return crate::make_unexpected(error{error_code::FileNotInArchive});
     }
 
     const auto& member = pimpl_->members_[entry.folder_index];
@@ -1256,7 +1256,7 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
 
     if (member.is_encrypted) {
         if (pimpl_->password_.empty()) {
-            return std::unexpected(error{error_code::EncryptionError, "Password required for encrypted file"});
+            return crate::make_unexpected(error{error_code::EncryptionError, "Password required for encrypted file"});
         }
     }
 
@@ -1279,7 +1279,7 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
                 return target_result;  // Return the error
             }
         }
-        return std::unexpected(
+        return crate::make_unexpected(
             error{error_code::FileNotInArchive, "Hard link target not found: " + member.redir_target});
     }
 
@@ -1300,20 +1300,20 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
     byte_vector compressed_data;
     auto gather_result = gather_compressed_data(member, compressed_data);
     if (!gather_result) {
-        return std::unexpected(gather_result.error());
+        return crate::make_unexpected(gather_result.error());
     }
 
     // Decrypt if encrypted
     if (member.is_encrypted) {
         auto decrypt_result = decrypt_data(member, compressed_data);
         if (!decrypt_result) {
-            return std::unexpected(decrypt_result.error());
+            return crate::make_unexpected(decrypt_result.error());
         }
     }
 
     // Guard against archive bombs - reject unreasonably large allocations
     if (member.original_size > MAX_EXTRACTION_SIZE) {
-        return std::unexpected(error{error_code::AllocationLimitExceeded,
+        return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
             "Uncompressed size exceeds maximum allowed (" + std::to_string(member.original_size) + " bytes)"});
     }
 
@@ -1342,7 +1342,7 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
             // We need to decompress any missing preceding files first
             auto solid_result = decompress_solid(file_index, compressed, output);
             if (!solid_result) {
-                return std::unexpected(solid_result.error());
+                return crate::make_unexpected(solid_result.error());
             }
         } else {
             // Non-solid file or first file in solid archive - use fresh decompressor
@@ -1363,11 +1363,11 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
             }
 
             if (!result) {
-                return std::unexpected(result.error());
+                return crate::make_unexpected(result.error());
             }
 
             if (*result != member.original_size) {
-                return std::unexpected(error{error_code::CorruptData, "Decompressed size mismatch"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Decompressed size mismatch"});
             }
 
             // For solid archives, initialize the shared decompressor from first file
@@ -1407,7 +1407,7 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
                     if (crc != member.crc) {
                         char msg[64];
                         snprintf(msg, sizeof(msg), "CRC mismatch: got %08x expected %08x", crc, member.crc);
-                        return std::unexpected(error{error_code::InvalidChecksum, msg});
+                        return crate::make_unexpected(error{error_code::InvalidChecksum, msg});
                     }
                 }
             }
@@ -1417,7 +1417,7 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
             if (crc != member.crc) {
                 char msg[64];
                 snprintf(msg, sizeof(msg), "CRC mismatch: got %08x expected %08x", crc, member.crc);
-                return std::unexpected(error{error_code::InvalidChecksum, msg});
+                return crate::make_unexpected(error{error_code::InvalidChecksum, msg});
             }
         }
     }
@@ -1435,11 +1435,11 @@ result_t<byte_vector> rar_archive::extract(const file_entry& entry) {
 void_result_t rar_archive::extract(const file_entry& entry, const std::filesystem::path& dest) {
     auto data = extract(entry);
     if (!data)
-        return std::unexpected(data.error());
+        return crate::make_unexpected(data.error());
 
     auto output = file_output_stream::create(dest);
     if (!output)
-        return std::unexpected(output.error());
+        return crate::make_unexpected(output.error());
 
     return output->write(*data);
 }

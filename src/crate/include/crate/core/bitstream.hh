@@ -22,7 +22,7 @@ namespace crate {
             result_t <u32> read_bits(unsigned n) {
                 if (n == 0) [[unlikely]] return 0u;
                 if (n > 32) [[unlikely]] {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::InvalidBlockType,
                         "Cannot read more than 32 bits at once"
                     });
@@ -31,7 +31,7 @@ namespace crate {
                 // Ensure we have enough bits
                 while (bits_left_ < n) {
                     if (pos_ >= data_.size()) [[unlikely]] {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
 
                     if constexpr (Order == bit_order::LSB) {
@@ -58,7 +58,7 @@ namespace crate {
             // Read a single bit
             result_t <bool> read_bit() {
                 auto r = read_bits(1);
-                if (!r) return std::unexpected(r.error());
+                if (!r) return crate::make_unexpected(r.error());
                 return *r != 0;
             }
 
@@ -68,7 +68,7 @@ namespace crate {
 
                 while (bits_left_ < n) {
                     if (pos_ >= data_.size()) [[unlikely]] {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
 
                     if constexpr (Order == bit_order::LSB) {
@@ -97,25 +97,25 @@ namespace crate {
             // Read a byte (aligned or unaligned)
             result_t <u8> read_byte() {
                 auto r = read_bits(8);
-                if (!r) return std::unexpected(r.error());
+                if (!r) return crate::make_unexpected(r.error());
                 return static_cast <u8>(*r);
             }
 
             // Read u16 little-endian
             result_t <u16> read_u16_le() {
                 auto lo = read_byte();
-                if (!lo) return std::unexpected(lo.error());
+                if (!lo) return crate::make_unexpected(lo.error());
                 auto hi = read_byte();
-                if (!hi) return std::unexpected(hi.error());
+                if (!hi) return crate::make_unexpected(hi.error());
                 return static_cast <u16>(*lo | (*hi << 8));
             }
 
             // Read u32 little-endian
             result_t <u32> read_u32_le() {
                 auto lo = read_u16_le();
-                if (!lo) return std::unexpected(lo.error());
+                if (!lo) return crate::make_unexpected(lo.error());
                 auto hi = read_u16_le();
-                if (!hi) return std::unexpected(hi.error());
+                if (!hi) return crate::make_unexpected(hi.error());
                 return static_cast <u32>(*lo | (static_cast <u32>(*hi) << 16));
             }
 

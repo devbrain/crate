@@ -111,7 +111,7 @@ result_t<std::unique_ptr<zip_archive>> zip_archive::open(byte_span data) {
 
     auto result = archive->parse();
     if (!result) {
-        return std::unexpected(result.error());
+        return crate::make_unexpected(result.error());
     }
 
     return archive;
@@ -120,7 +120,7 @@ result_t<std::unique_ptr<zip_archive>> zip_archive::open(byte_span data) {
 result_t<std::unique_ptr<zip_archive>> zip_archive::open(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        return std::unexpected(error{error_code::FileNotFound, "Cannot open file"});
+        return crate::make_unexpected(error{error_code::FileNotFound, "Cannot open file"});
     }
 
     file.seekg(0, std::ios::end);
@@ -141,7 +141,7 @@ void_result_t zip_archive::parse() {
     const auto& data = pimpl_->data_;
 
     if (data.size() < 22) {
-        return std::unexpected(error{error_code::TruncatedArchive, "File too small for ZIP"});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "File too small for ZIP"});
     }
 
     // Find End of Central Directory record (search from end)
@@ -161,7 +161,7 @@ void_result_t zip_archive::parse() {
     }
 
     if (!found) {
-        return std::unexpected(error{error_code::InvalidSignature, "ZIP EOCD signature not found"});
+        return crate::make_unexpected(error{error_code::InvalidSignature, "ZIP EOCD signature not found"});
     }
 
     // Parse EOCD
@@ -175,7 +175,7 @@ void_result_t zip_archive::parse() {
     u16 comment_len = read_u16_le(data.data() + pos); pos += 2;
 
     if (pos + comment_len > data.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive, "ZIP comment truncated"});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "ZIP comment truncated"});
     }
 
     // Check for ZIP64
@@ -206,11 +206,11 @@ void_result_t zip_archive::parse() {
 
     for (u64 i = 0; i < pimpl_->eocd_.total_entries; ++i) {
         if (pos + 46 > data.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive, "Central directory truncated"});
+            return crate::make_unexpected(error{error_code::TruncatedArchive, "Central directory truncated"});
         }
 
         if (read_u32_le(data.data() + pos) != zip::CENTRAL_DIR_SIGNATURE) {
-            return std::unexpected(error{error_code::InvalidHeader, "Invalid central directory entry"});
+            return crate::make_unexpected(error{error_code::InvalidHeader, "Invalid central directory entry"});
         }
 
         zip::central_dir_entry entry;
@@ -233,7 +233,7 @@ void_result_t zip_archive::parse() {
         entry.local_header_offset = read_u32_le(data.data() + pos); pos += 4;
 
         if (pos + entry.filename_len + entry.extra_len + entry.comment_len > data.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive, "Central directory entry truncated"});
+            return crate::make_unexpected(error{error_code::TruncatedArchive, "Central directory entry truncated"});
         }
 
         entry.filename.assign(reinterpret_cast<const char*>(data.data() + pos), entry.filename_len);
@@ -294,25 +294,25 @@ void_result_t zip_archive::parse() {
 
 result_t<byte_vector> zip_archive::extract(const file_entry& entry) {
     if (entry.folder_index >= pimpl_->entries_.size()) {
-        return std::unexpected(error{error_code::InvalidParameter, "Invalid entry index"});
+        return crate::make_unexpected(error{error_code::InvalidParameter, "Invalid entry index"});
     }
 
     const auto& cd_entry = pimpl_->entries_[entry.folder_index];
     const auto& data = pimpl_->data_;
 
     if (cd_entry.flags & zip::ENCRYPTED) {
-        return std::unexpected(error{error_code::EncryptionError, "Encrypted ZIP not supported"});
+        return crate::make_unexpected(error{error_code::EncryptionError, "Encrypted ZIP not supported"});
     }
 
     // Read local file header to get actual data offset
     size_t pos = static_cast<size_t>(cd_entry.local_header_offset);
 
     if (pos + 30 > data.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive, "Local header truncated"});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "Local header truncated"});
     }
 
     if (read_u32_le(data.data() + pos) != zip::LOCAL_FILE_SIGNATURE) {
-        return std::unexpected(error{error_code::InvalidHeader, "Invalid local file header"});
+        return crate::make_unexpected(error{error_code::InvalidHeader, "Invalid local file header"});
     }
 
     pos += 26;
@@ -325,12 +325,12 @@ result_t<byte_vector> zip_archive::extract(const file_entry& entry) {
     size_t uncompressed_size = static_cast<size_t>(cd_entry.uncompressed_size);
 
     if (data_offset + compressed_size > data.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive, "File data truncated"});
+        return crate::make_unexpected(error{error_code::TruncatedArchive, "File data truncated"});
     }
 
     // Guard against zip bombs - reject unreasonably large allocations
     if (uncompressed_size > MAX_EXTRACTION_SIZE) {
-        return std::unexpected(error{error_code::AllocationLimitExceeded,
+        return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
             "Uncompressed size exceeds maximum allowed (" + std::to_string(uncompressed_size) + " bytes)"});
     }
 
@@ -340,7 +340,7 @@ result_t<byte_vector> zip_archive::extract(const file_entry& entry) {
     switch (cd_entry.compression) {
         case zip::STORED:
             if (compressed_size != uncompressed_size) {
-                return std::unexpected(error{error_code::CorruptData, "Size mismatch for stored file"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Size mismatch for stored file"});
             }
             std::memcpy(output.data(), compressed.data(), compressed_size);
             break;
@@ -349,23 +349,23 @@ result_t<byte_vector> zip_archive::extract(const file_entry& entry) {
             inflate_decompressor inflater;
             auto result = inflater.decompress(compressed, output);
             if (!result) {
-                return std::unexpected(result.error());
+                return crate::make_unexpected(result.error());
             }
             if (*result != uncompressed_size) {
-                return std::unexpected(error{error_code::CorruptData, "Decompressed size mismatch"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Decompressed size mismatch"});
             }
             break;
         }
 
         default:
-            return std::unexpected(error{error_code::UnsupportedCompression,
+            return crate::make_unexpected(error{error_code::UnsupportedCompression,
                 "Unsupported ZIP compression method: " + std::to_string(cd_entry.compression)});
     }
 
     // Verify CRC32
     u32 calc_crc = eval_crc_32(output);
     if (calc_crc != cd_entry.crc32) {
-        return std::unexpected(error{error_code::InvalidChecksum, "ZIP CRC32 mismatch"});
+        return crate::make_unexpected(error{error_code::InvalidChecksum, "ZIP CRC32 mismatch"});
     }
 
     if (byte_progress_cb_) {

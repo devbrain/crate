@@ -40,7 +40,7 @@ namespace crate {
             // Internal build function
             result_t <void> build_internal(std::span <const u8> lengths, bool msb_order) {
                 if (lengths.size() > MaxSymbols) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::InvalidHuffmanTable,
                         "Too many symbols"
                     });
@@ -55,7 +55,7 @@ namespace crate {
                 std::array <unsigned, MAX_CODE_LENGTH + 1> count{};
                 for (auto len : lengths) {
                     if (len > MAX_CODE_LENGTH) {
-                        return std::unexpected(error{
+                        return crate::make_unexpected(error{
                             error_code::InvalidHuffmanTable,
                             "Code length too large"
                         });
@@ -131,7 +131,7 @@ namespace crate {
             // Decode one symbol from LSB-first bitstream
             result_t <u16> decode(lsb_bitstream& bs) {
                 auto peek_result = bs.peek_bits(std::min <unsigned>(max_length_, TableBits));
-                if (!peek_result) return std::unexpected(peek_result.error());
+                if (!peek_result) return crate::make_unexpected(peek_result.error());
 
                 u32 bits = *peek_result;
 
@@ -156,7 +156,7 @@ namespace crate {
                     }
                 }
 
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidHuffmanTable,
                     "Failed to decode symbol"
                 });
@@ -166,7 +166,7 @@ namespace crate {
             result_t <u16> decode(msb_bitstream& bs) {
                 unsigned peek_len = std::min <unsigned>(max_length_, TableBits);
                 auto peek_result = bs.peek_bits(peek_len);
-                if (!peek_result) return std::unexpected(peek_result.error());
+                if (!peek_result) return crate::make_unexpected(peek_result.error());
 
                 u32 bits = *peek_result;
                 if (peek_len < TableBits) {
@@ -194,7 +194,7 @@ namespace crate {
                     }
                 }
 
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidHuffmanTable,
                     "Failed to decode symbol"
                 });
@@ -206,7 +206,7 @@ namespace crate {
             template <typename Reader>
             result_t <bool> try_decode_lsb(Reader& reader, u16& out) {
                 if (max_length_ == 0) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::InvalidHuffmanTable,
                         "Failed to decode symbol"
                     });
@@ -238,7 +238,7 @@ namespace crate {
                     }
                 }
 
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidHuffmanTable,
                     "Failed to decode symbol"
                 });
@@ -249,7 +249,7 @@ namespace crate {
             template <typename Reader>
             result_t <bool> try_decode_msb(Reader& reader, u16& out) {
                 if (max_length_ == 0) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::InvalidHuffmanTable,
                         "Failed to decode symbol"
                     });
@@ -289,7 +289,7 @@ namespace crate {
                     }
                 }
 
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidHuffmanTable,
                     "Failed to decode symbol"
                 });

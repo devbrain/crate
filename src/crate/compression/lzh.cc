@@ -247,7 +247,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 5, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -269,7 +269,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 5, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -284,7 +284,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u32 len = 0;
                     if (!try_read_bits(in_ptr, in_end, 3, len)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -318,7 +318,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u32 bit = 0;
                     if (!try_read_bits(in_ptr, in_end, 1, bit)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -327,7 +327,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     }
                     code_length_value_++;
                     if (code_length_value_ > 16) {
-                        return std::unexpected(error{error_code::InvalidHuffmanTable, "Code length too large"});
+                        return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Code length too large"});
                     }
                 }
 
@@ -349,7 +349,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 skip = 0;
                 if (!try_read_bits(in_ptr, in_end, 2, skip)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -360,7 +360,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
 
             case state::BUILD_CL_TREE: {
                 if (!codelengths_tree_.build_from_lengths(tree_lengths_)) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to build code lengths tree"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to build code lengths tree"});
                 }
                 state_ = state::READ_LIT_TREE_NCODES;
                 break;
@@ -370,13 +370,13 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 9, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 tree_ncodes_ = value;
                 if (tree_ncodes_ > 510) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Too many literal codes"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Too many literal codes"});
                 }
                 if (tree_ncodes_ == 0) {
                     state_ = state::READ_LIT_TREE_SINGLE;
@@ -392,12 +392,12 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 9, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 if (value >= 510) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable});
                 }
                 literals_tree_.build_single(value);
                 state_ = state::READ_OFF_TREE_NCODES;
@@ -409,11 +409,11 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u16 code = 0;
                     auto decode_result = codelengths_tree_.try_decode(reader, code);
                     if (!decode_result) {
-                        return std::unexpected(decode_result.error());
+                        return crate::make_unexpected(decode_result.error());
                     }
                     if (!*decode_result) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -443,7 +443,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u32 extra = 0;
                     if (!try_read_bits(in_ptr, in_end, 4, extra)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -452,7 +452,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u32 extra = 0;
                     if (!try_read_bits(in_ptr, in_end, 9, extra)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -465,7 +465,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
 
             case state::BUILD_LIT_TREE: {
                 if (!literals_tree_.build_from_lengths(tree_lengths_)) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to build literals tree"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to build literals tree"});
                 }
                 state_ = state::READ_OFF_TREE_NCODES;
                 break;
@@ -475,13 +475,13 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, offsets_bits_, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 tree_ncodes_ = value;
                 if (tree_ncodes_ > max_offset_codes_) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Too many offset codes"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Too many offset codes"});
                 }
                 if (tree_ncodes_ == 0) {
                     state_ = state::READ_OFF_TREE_SINGLE;
@@ -497,12 +497,12 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, offsets_bits_, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 if (value >= max_offset_codes_) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable});
                 }
                 offsets_tree_.build_single(value);
                 state_ = state::DECODE_SYMBOL;
@@ -514,7 +514,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u32 len = 0;
                     if (!try_read_bits(in_ptr, in_end, 3, len)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -542,7 +542,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u32 bit = 0;
                     if (!try_read_bits(in_ptr, in_end, 1, bit)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -551,7 +551,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     }
                     code_length_value_++;
                     if (code_length_value_ > 16) {
-                        return std::unexpected(error{error_code::InvalidHuffmanTable, "Code length too large"});
+                        return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Code length too large"});
                     }
                 }
 
@@ -568,7 +568,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
 
             case state::BUILD_OFF_TREE: {
                 if (!offsets_tree_.build_from_lengths(tree_lengths_)) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to build offsets tree"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to build offsets tree"});
                 }
                 state_ = state::DECODE_SYMBOL;
                 break;
@@ -583,7 +583,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                     u16 code = 0;
                     auto decode_result = literals_tree_.try_decode(reader, code);
                     if (!decode_result) {
-                        return std::unexpected(decode_result.error());
+                        return crate::make_unexpected(decode_result.error());
                     }
                     if (!*decode_result) {
                         if (input_finished) {
@@ -625,11 +625,11 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u16 ocode = 0;
                 auto decode_result = offsets_tree_.try_decode(reader, ocode);
                 if (!decode_result) {
-                    return std::unexpected(decode_result.error());
+                    return crate::make_unexpected(decode_result.error());
                 }
                 if (!*decode_result) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -650,7 +650,7 @@ result_t<stream_result> lzh_decompressor::decompress_some(
                 u32 extra = 0;
                 if (!try_read_bits(in_ptr, in_end, extra_bits_needed_, extra)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }

@@ -316,7 +316,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                     // Literal
                     if (!coder_.try_decode_update(in_ptr, in_end, 0, lit_freq, type_total + 1, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -327,7 +327,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                     // Match
                     if (!coder_.try_decode_update(in_ptr, in_end, lit_freq, type_total, type_total + 1, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -357,7 +357,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::THRESHOLD) {
                     if (!coder_.try_threshold_val(in_ptr, in_end, combined_total_, threshold_, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -369,7 +369,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                     if (phase_ == decode_phase::MAIN_NAVIGATE) {
                         if (!coder_.try_decode_update(in_ptr, in_end, main_total_, combined_total_, combined_total_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -380,7 +380,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                         u16 esc_total = char_escape_.root_sum();
                         if (!coder_.try_threshold_val(in_ptr, in_end, esc_total, threshold_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -395,7 +395,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                         u16 esc_total = char_escape_.root_sum();
                         if (!coder_.try_decode_update(in_ptr, in_end, nav_lt_, nav_lt_ + nav_freq_, esc_total, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -431,7 +431,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                     if (phase_ == decode_phase::MAIN_UPDATE) {
                         if (!coder_.try_decode_update(in_ptr, in_end, nav_lt_, nav_lt_ + nav_freq_, combined_total_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -486,7 +486,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::THRESHOLD) {
                     if (!coder_.try_threshold_val(in_ptr, in_end, main_total_, threshold_, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -500,7 +500,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::MAIN_UPDATE) {
                     if (!coder_.try_decode_update(in_ptr, in_end, nav_lt_, nav_lt_ + nav_freq_, main_total_, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -529,7 +529,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::THRESHOLD) {
                     if (!coder_.try_threshold_val(in_ptr, in_end, range, threshold_, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -539,7 +539,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::MAIN_UPDATE) {
                     if (!coder_.try_decode_update(in_ptr, in_end, threshold_, threshold_ + 1, range, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -558,7 +558,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::THRESHOLD) {
                     if (!coder_.try_threshold_val(in_ptr, in_end, combined_total_, threshold_, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -570,7 +570,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                     if (phase_ == decode_phase::MAIN_NAVIGATE) {
                         if (!coder_.try_decode_update(in_ptr, in_end, main_total_, combined_total_, combined_total_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -581,7 +581,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                         u16 esc_total = len_escape_.root_sum();
                         if (!coder_.try_threshold_val(in_ptr, in_end, esc_total, threshold_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -596,7 +596,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                         u16 esc_total = len_escape_.root_sum();
                         if (!coder_.try_decode_update(in_ptr, in_end, nav_lt_, nav_lt_ + nav_freq_, esc_total, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -632,7 +632,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                     if (phase_ == decode_phase::MAIN_UPDATE) {
                         if (!coder_.try_decode_update(in_ptr, in_end, nav_lt_, nav_lt_ + nav_freq_, combined_total_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -677,7 +677,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::THRESHOLD) {
                     if (!coder_.try_threshold_val(in_ptr, in_end, LONG_LEN_RANGE, threshold_, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -687,7 +687,7 @@ result_t<stream_result> ha_asc_decompressor::decompress_some(
                 if (phase_ == decode_phase::MAIN_UPDATE) {
                     if (!coder_.try_decode_update(in_ptr, in_end, threshold_, threshold_ + 1, LONG_LEN_RANGE, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -1256,7 +1256,7 @@ result_t<stream_result> ha_hsc_decompressor::decompress_some(
                         // Found symbol
                         if (!coder_.try_decode_update(in_ptr, in_end, cumulative_, cumulative_ + symbol_freq_, scaled_total + escape_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -1285,7 +1285,7 @@ result_t<stream_result> ha_hsc_decompressor::decompress_some(
                         // Escape
                         if (!coder_.try_decode_update(in_ptr, in_end, scaled_total, scaled_total + escape_, scaled_total + escape_, input_finished)) {
                             if (input_finished) {
-                                return std::unexpected(error{error_code::InputBufferUnderflow});
+                                return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                             }
                             return stream_result::need_input(bytes_read(), bytes_written());
                         }
@@ -1360,7 +1360,7 @@ result_t<stream_result> ha_hsc_decompressor::decompress_some(
                 if (phase_ == decode_phase::UPDATE) {
                     if (!coder_.try_decode_update(in_ptr, in_end, cumulative_, cumulative_ + 1, unmasked_count, input_finished)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }

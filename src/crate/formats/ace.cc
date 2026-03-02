@@ -16,7 +16,7 @@ namespace crate {
                     bit_stream bs(data);
                     auto r = bs.refill();
                     if (!r)
-                        return std::unexpected(r.error());
+                        return crate::make_unexpected(r.error());
                     return bs;
                 }
 
@@ -33,7 +33,7 @@ namespace crate {
                                 buf_.push_back(0);
                                 len_ += 32;
                             } else {
-                                return std::unexpected(r.error());
+                                return crate::make_unexpected(r.error());
                             }
                         }
                     }
@@ -61,7 +61,7 @@ namespace crate {
                     if (pos_ + bits > len_) {
                         auto r = refill();
                         if (!r)
-                            return std::unexpected(r.error());
+                            return crate::make_unexpected(r.error());
                     }
                     pos_ += bits;
                     return {};
@@ -70,10 +70,10 @@ namespace crate {
                 result_t <u32> read_bits(int bits) {
                     auto value = peek_bits(bits);
                     if (!value)
-                        return std::unexpected(value.error());
+                        return crate::make_unexpected(value.error());
                     auto r = skip_bits(bits);
                     if (!r)
-                        return std::unexpected(r.error());
+                        return crate::make_unexpected(r.error());
                     return *value;
                 }
 
@@ -84,7 +84,7 @@ namespace crate {
                     bits -= 1;
                     auto v = read_bits(bits);
                     if (!v)
-                        return std::unexpected(v.error());
+                        return crate::make_unexpected(v.error());
                     return *v + (1u << bits);
                 }
 
@@ -118,7 +118,7 @@ namespace crate {
                     }
 
                     if (new_buf.empty() && buf_.empty()) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow, "Cannot refill beyond EOF"});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow, "Cannot refill beyond EOF"});
                     }
 
                     if (pos_ > 0 && !buf_.empty()) {
@@ -152,17 +152,17 @@ namespace crate {
                     result_t <u16> read_symbol(bit_stream& bs) const {
                         auto peek_result = bs.peek_bits(max_width);
                         if (!peek_result)
-                            return std::unexpected(peek_result.error());
+                            return crate::make_unexpected(peek_result.error());
                         u32 maxwidth_code = *peek_result;
                         if (maxwidth_code >= codes.size()) {
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::CorruptData, "Huffman: maxwidth_code >= codes.size()"
                             });
                         }
                         u16 symbol = codes[maxwidth_code];
                         auto skip_result = bs.skip_bits(widths[symbol]);
                         if (!skip_result)
-                            return std::unexpected(skip_result.error());
+                            return crate::make_unexpected(skip_result.error());
                         return symbol;
                     }
                 };
@@ -210,14 +210,14 @@ namespace crate {
                         int sym = sorted_symbols[static_cast <size_t>(i)];
                         int wdt = sorted_widths[static_cast <size_t>(i)];
                         if (wdt > max_width) {
-                            return std::unexpected(error{error_code::CorruptData, "Huffman: width > max_width"});
+                            return crate::make_unexpected(error{error_code::CorruptData, "Huffman: width > max_width"});
                         }
                         size_t repeat = 1u << (max_width - wdt);
                         for (size_t j = 0; j < repeat; j++) {
                             t.codes.push_back(static_cast <u16>(sym));
                         }
                         if (t.codes.size() > max_codes) {
-                            return std::unexpected(error{error_code::CorruptData, "Huffman: codes > max_codes"});
+                            return crate::make_unexpected(error{error_code::CorruptData, "Huffman: codes > max_codes"});
                         }
                     }
 
@@ -227,7 +227,7 @@ namespace crate {
                 static result_t <tree> read_tree(bit_stream& bs, int max_width, int num_codes) {
                     auto num_widths_r = bs.read_bits(9);
                     if (!num_widths_r)
-                        return std::unexpected(num_widths_r.error());
+                        return crate::make_unexpected(num_widths_r.error());
                     int num_widths = static_cast <int>(*num_widths_r) + 1;
                     if (num_widths > num_codes + 1) {
                         num_widths = num_codes + 1;
@@ -235,12 +235,12 @@ namespace crate {
 
                     auto lower_width_r = bs.read_bits(4);
                     if (!lower_width_r)
-                        return std::unexpected(lower_width_r.error());
+                        return crate::make_unexpected(lower_width_r.error());
                     int lower_width = static_cast <int>(*lower_width_r);
 
                     auto upper_width_r = bs.read_bits(4);
                     if (!upper_width_r)
-                        return std::unexpected(upper_width_r.error());
+                        return crate::make_unexpected(upper_width_r.error());
                     int upper_width = static_cast <int>(*upper_width_r);
 
                     // Read width widths
@@ -249,13 +249,13 @@ namespace crate {
                     for (int i = 0; i < width_num_widths; i++) {
                         auto bits_r = bs.read_bits(WIDTHWIDTHBITS);
                         if (!bits_r)
-                            return std::unexpected(bits_r.error());
+                            return crate::make_unexpected(bits_r.error());
                         width_widths.push_back(static_cast <u8>(*bits_r));
                     }
 
                     auto width_tree_r = make_tree(width_widths, MAXWIDTHWIDTH);
                     if (!width_tree_r)
-                        return std::unexpected(width_tree_r.error());
+                        return crate::make_unexpected(width_tree_r.error());
                     tree width_tree = std::move(*width_tree_r);
 
                     // Read widths
@@ -263,14 +263,14 @@ namespace crate {
                     while (static_cast <int>(widths.size()) < num_widths) {
                         auto symbol_r = width_tree.read_symbol(bs);
                         if (!symbol_r)
-                            return std::unexpected(symbol_r.error());
+                            return crate::make_unexpected(symbol_r.error());
                         u16 symbol = *symbol_r;
                         if (static_cast <int>(symbol) < upper_width) {
                             widths.push_back(static_cast <u8>(symbol));
                         } else {
                             auto len_r = bs.read_bits(4);
                             if (!len_r)
-                                return std::unexpected(len_r.error());
+                                return crate::make_unexpected(len_r.error());
                             int length = static_cast <int>(*len_r) + 4;
                             length = std::min(length, num_widths - static_cast <int>(widths.size()));
                             for (int i = 0; i < length; i++) {
@@ -369,7 +369,7 @@ namespace crate {
                 result_t <byte_vector> decompress(byte_span data, size_t orig_size) {
                     auto bs_result = bit_stream::create(data);
                     if (!bs_result)
-                        return std::unexpected(bs_result.error());
+                        return crate::make_unexpected(bs_result.error());
                     bit_stream bs = std::move(*bs_result);
 
                     byte_vector output;
@@ -388,28 +388,28 @@ namespace crate {
     do {                                        \
         auto _r = (expr);                       \
         if (!_r)                                \
-            return std::unexpected(_r.error()); \
+            return crate::make_unexpected(_r.error()); \
     } while (0)
 #define TRY_VAL(var, expr)                       \
     auto var##_r = (expr);                       \
     if (!var##_r)                                \
-        return std::unexpected(var##_r.error()); \
+        return crate::make_unexpected(var##_r.error()); \
     auto var = *var##_r
 
                     auto read_trees = [&]() -> void_result_t {
                         auto main_r = huffman::read_tree(bs, MAXCODEWIDTH, NUMMAINCODES);
                         if (!main_r)
-                            return std::unexpected(main_r.error());
+                            return crate::make_unexpected(main_r.error());
                         main_tree = std::move(*main_r);
 
                         auto len_r = huffman::read_tree(bs, MAXCODEWIDTH, NUMLENCODES);
                         if (!len_r)
-                            return std::unexpected(len_r.error());
+                            return crate::make_unexpected(len_r.error());
                         len_tree = std::move(*len_r);
 
                         auto syms_r = bs.read_bits(15);
                         if (!syms_r)
-                            return std::unexpected(syms_r.error());
+                            return crate::make_unexpected(syms_r.error());
                         syms_to_read = static_cast <int>(*syms_r);
                         return {};
                     };
@@ -418,7 +418,7 @@ namespace crate {
                         if (syms_to_read == 0) {
                             auto r = read_trees();
                             if (!r)
-                                return std::unexpected(r.error());
+                                return crate::make_unexpected(r.error());
                         }
                         syms_to_read--;
                         return main_tree.read_symbol(bs);
@@ -489,7 +489,7 @@ namespace crate {
 
                             // Copy from dictionary
                             if (copy_dist > output.size()) {
-                                return std::unexpected(error(error_code::CorruptData,
+                                return crate::make_unexpected(error(error_code::CorruptData,
                                                              "LZ77 copy source out of bounds"));
                             }
 
@@ -513,7 +513,7 @@ namespace crate {
                             }
                             // Continue with LZ77 decompression
                         } else {
-                            return std::unexpected(error(error_code::CorruptData, "LZ77 invalid symbol"));
+                            return crate::make_unexpected(error(error_code::CorruptData, "LZ77 invalid symbol"));
                         }
                     }
 
@@ -623,7 +623,7 @@ namespace crate {
 
         auto result = archive->parse();
         if (!result)
-            return std::unexpected(result.error());
+            return crate::make_unexpected(result.error());
 
         return archive;
     }
@@ -631,16 +631,16 @@ namespace crate {
     result_t <std::unique_ptr <ace_archive>> ace_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
         if (!file)
-            return std::unexpected(file.error());
+            return crate::make_unexpected(file.error());
 
         auto size = file->size();
         if (!size)
-            return std::unexpected(size.error());
+            return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
         if (!read)
-            return std::unexpected(read.error());
+            return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -651,7 +651,7 @@ namespace crate {
 
     result_t <byte_vector> ace_archive::extract(const file_entry& entry) {
         if (entry.folder_index >= m_pimpl->members_.size()) {
-            return std::unexpected(error{error_code::FileNotInArchive});
+            return crate::make_unexpected(error{error_code::FileNotInArchive});
         }
 
         const auto& member = m_pimpl->members_[entry.folder_index];
@@ -662,23 +662,23 @@ namespace crate {
         if ((m_pimpl->main_header_.flags & ace::FLAG_SOLID) && entry.folder_index > 0) {
             // Check if this file depends on previous files (SOLID flag per file)
             if (member.flags & ace::FLAG_SOLID_FILE) {
-                return std::unexpected(
+                return crate::make_unexpected(
                     error{error_code::UnsupportedCompression, "ACE solid archives require sequential decompression"});
             }
         }
 
         // Check if file is encrypted
         if (member.flags & ace::FLAG_ENCRYPTED) {
-            return std::unexpected(error{error_code::UnsupportedCompression, "ACE encrypted files not supported"});
+            return crate::make_unexpected(error{error_code::UnsupportedCompression, "ACE encrypted files not supported"});
         }
 
         // Check if file spans volumes
         if (member.flags & (ace::FLAG_CONTINUED_PREV | ace::FLAG_CONTINUED_NEXT)) {
-            return std::unexpected(error{error_code::UnsupportedCompression, "ACE multi-volume files not supported"});
+            return crate::make_unexpected(error{error_code::UnsupportedCompression, "ACE multi-volume files not supported"});
         }
 
         if (entry.folder_offset + member.pack_size > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         byte_span compressed(m_pimpl->data_.data() + entry.folder_offset, member.pack_size);
@@ -701,20 +701,20 @@ namespace crate {
                 vector_output_stream output_stream(member.orig_size);
                 auto result = decompressor.decompress_stream(input, output_stream, member.orig_size);
                 if (!result) {
-                    return std::unexpected(result.error());
+                    return crate::make_unexpected(result.error());
                 }
                 output = output_stream.take();
                 break;
             }
 
             default:
-                return std::unexpected(error{error_code::UnsupportedCompression, "Unknown ACE compression method"});
+                return crate::make_unexpected(error{error_code::UnsupportedCompression, "Unknown ACE compression method"});
         }
 
         // Verify ACE CRC-32 (different from standard CRC-32)
         u32 calc_crc = ace::ace_crc32(output);
         if (calc_crc != member.file_crc) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidChecksum,
                 "CRC-32 mismatch (expected 0x" + std::to_string(member.file_crc) + ", got 0x" +
                 std::to_string(calc_crc) + ", size=" + std::to_string(output.size()) + ")"
@@ -733,12 +733,12 @@ namespace crate {
         // Find signature "**ACE**"
         size_t sig_pos = find_signature();
         if (sig_pos == std::string::npos) {
-            return std::unexpected(error{error_code::InvalidSignature, "ACE signature not found"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "ACE signature not found"});
         }
 
         // Main header starts at sig_pos - 7
         if (sig_pos < ace::SIG_OFFSET) {
-            return std::unexpected(error{error_code::InvalidSignature, "Invalid ACE header position"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Invalid ACE header position"});
         }
 
         size_t pos = sig_pos - ace::SIG_OFFSET;
@@ -746,7 +746,7 @@ namespace crate {
         // Parse main header
         auto main_result = parse_main_header(pos);
         if (!main_result)
-            return std::unexpected(main_result.error());
+            return crate::make_unexpected(main_result.error());
 
         // Parse file headers
         while (pos < m_pimpl->data_.size()) {
@@ -805,7 +805,7 @@ namespace crate {
 
     void_result_t ace_archive::parse_main_header(size_t& pos) {
         if (pos + 7 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         m_pimpl->main_header_.crc = read_u16_le(m_pimpl->data_.data() + pos);
@@ -814,19 +814,19 @@ namespace crate {
         m_pimpl->main_header_.flags = read_u16_le(m_pimpl->data_.data() + pos + 5);
 
         if (m_pimpl->main_header_.type != ace::MAIN_HEADER) {
-            return std::unexpected(error{error_code::InvalidSignature, "Expected ACE main header"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Expected ACE main header"});
         }
 
         size_t header_end = pos + 4 + m_pimpl->main_header_.size;
         if (header_end > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Skip signature (7 bytes)
         size_t field_pos = pos + 7 + 7;
 
         if (field_pos + 8 > header_end) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         m_pimpl->main_header_.ver_extract = m_pimpl->data_[field_pos++];
@@ -842,11 +842,11 @@ namespace crate {
         // AV string if present
         if (m_pimpl->main_header_.flags & ace::FLAG_AV_STRING) {
             if (field_pos >= header_end) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             u8 av_len = m_pimpl->data_[field_pos++];
             if (field_pos + av_len > header_end) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             m_pimpl->main_header_.av_string.assign(reinterpret_cast <const char*>(m_pimpl->data_.data() + field_pos), av_len);
             field_pos += av_len;
@@ -855,12 +855,12 @@ namespace crate {
         // Comment if present
         if (m_pimpl->main_header_.flags & ace::FLAG_COMMENT) {
             if (field_pos + 2 > header_end) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             u16 comment_len = read_u16_le(m_pimpl->data_.data() + field_pos);
             field_pos += 2;
             if (field_pos + comment_len > header_end) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             m_pimpl->main_header_.comment.assign(reinterpret_cast <const char*>(m_pimpl->data_.data() + field_pos), comment_len);
             field_pos += comment_len;
@@ -872,7 +872,7 @@ namespace crate {
 
     void_result_t ace_archive::parse_file_header(size_t& pos) {
         if (pos + 7 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         ace::file_header member;
@@ -883,13 +883,13 @@ namespace crate {
 
         size_t header_end = pos + 4 + member.size;
         if (header_end > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         size_t field_pos = pos + 7;
 
         if (field_pos + 20 > header_end) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         member.pack_size = read_u32_le(m_pimpl->data_.data() + field_pos);
@@ -908,7 +908,7 @@ namespace crate {
         field_pos += 4;
 
         if (field_pos + 4 > header_end) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // TECH info - compression type and quality
@@ -922,7 +922,7 @@ namespace crate {
         field_pos += 2;
 
         if (field_pos + 2 > header_end) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Filename
@@ -930,7 +930,7 @@ namespace crate {
         field_pos += 2;
 
         if (field_pos + fname_len > header_end) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         member.name.assign(reinterpret_cast <const char*>(m_pimpl->data_.data() + field_pos), fname_len);

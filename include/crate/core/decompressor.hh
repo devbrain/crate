@@ -100,7 +100,7 @@ public:
     ) {
         if (requires_output_size()) {
             if (expected_size == 0) {
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidParameter,
                     "Expected size required for bounded decompression"
                 });
@@ -124,7 +124,7 @@ public:
             while (true) {
                 auto read = input.read(mutable_byte_span{buffer.data(), buffer.size()});
                 if (!read) {
-                    return std::unexpected(read.error());
+                    return crate::make_unexpected(read.error());
                 }
                 if (*read == 0) {
                     break;
@@ -138,7 +138,7 @@ public:
             }
             if (expected_size == 0) {
                 clear_expected();
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidParameter,
                     "Expected size required for buffered decompression"
                 });
@@ -148,14 +148,14 @@ public:
             auto result = decompress(compressed, decompressed);
             if (!result) {
                 clear_expected();
-                return std::unexpected(result.error());
+                return crate::make_unexpected(result.error());
             }
             decompressed.resize(*result);
 
             auto write = output.write(decompressed);
             if (!write) {
                 clear_expected();
-                return std::unexpected(write.error());
+                return crate::make_unexpected(write.error());
             }
             clear_expected();
             return *result;
@@ -193,7 +193,7 @@ public:
 
             auto read = input.read(mutable_byte_span{input_buffer.data() + input_size, space});
             if (!read) {
-                return std::unexpected(read.error());
+                return crate::make_unexpected(read.error());
             }
             if (*read == 0) {
                 input_exhausted = true;
@@ -208,7 +208,7 @@ public:
             if (!input_exhausted && input_pos >= input_size) {
                 auto fill = fill_input();
                 if (!fill) {
-                    return std::unexpected(fill.error());
+                    return crate::make_unexpected(fill.error());
                 }
             }
 
@@ -219,7 +219,7 @@ public:
             auto result = decompress_some(in_span, out_span, input_finished);
             if (!result) {
                 clear_expected();
-                return std::unexpected(result.error());
+                return crate::make_unexpected(result.error());
             }
 
             input_pos += result->bytes_read;
@@ -227,7 +227,7 @@ public:
                 auto write = output.write(byte_span{output_buffer.data(), result->bytes_written});
                 if (!write) {
                     clear_expected();
-                    return std::unexpected(write.error());
+                    return crate::make_unexpected(write.error());
                 }
                 total_written += result->bytes_written;
             }
@@ -240,14 +240,14 @@ public:
                 auto fill = fill_input();
                 if (!fill) {
                     clear_expected();
-                    return std::unexpected(fill.error());
+                    return crate::make_unexpected(fill.error());
                 }
             }
 
             if (result->bytes_read == 0 && result->bytes_written == 0) {
                 if (input_finished) {
                     clear_expected();
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::CorruptData,
                         "Decompression stalled at end of input"
                     });

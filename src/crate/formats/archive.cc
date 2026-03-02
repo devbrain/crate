@@ -16,20 +16,20 @@ namespace crate {
 
     result_t <size_t> archive::extract_to(const file_entry& entry, output_stream& dest) {
         auto data = extract(entry);
-        if (!data) return std::unexpected(data.error());
+        if (!data) return crate::make_unexpected(data.error());
 
         auto write = dest.write(*data);
-        if (!write) return std::unexpected(write.error());
+        if (!write) return crate::make_unexpected(write.error());
 
         return data->size();
     }
 
     void_result_t archive::extract(const file_entry& entry, const std::filesystem::path& dest) {
         auto output = file_output_stream::create(dest);
-        if (!output) return std::unexpected(output.error());
+        if (!output) return crate::make_unexpected(output.error());
 
         auto result = extract_to(entry, *output);
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return {};
     }

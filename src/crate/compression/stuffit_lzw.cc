@@ -195,7 +195,7 @@ result_t<stream_result> stuffit_lzw_decompressor::decompress_some(
                 // Special case for KwKwK string
                 if (code >= free_ent_) {
                     if (code > free_ent_ || oldcode_ < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Bad LZW code"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Bad LZW code"});
                     }
                     stack_[stack_ptr_++] = static_cast<u8>(finchar_);
                     code = oldcode_;
@@ -204,7 +204,7 @@ result_t<stream_result> stuffit_lzw_decompressor::decompress_some(
                 // Walk the chain to build output (in reverse)
                 while (code >= 256) {
                     if (stack_ptr_ >= STACK_SIZE) {
-                        return std::unexpected(error{error_code::CorruptData, "LZW stack overflow"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "LZW stack overflow"});
                     }
                     stack_[stack_ptr_++] = tab_suffix_[static_cast<size_t>(code)];
                     code = tab_prefix_[static_cast<size_t>(code)];

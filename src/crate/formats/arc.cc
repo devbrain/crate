@@ -38,18 +38,18 @@ namespace crate {
         // Squeezed (Huffman) decompression
         inline result_t <byte_vector> unsqueeze(byte_span input) {
             if (input.size() < 2) {
-                return std::unexpected(error{error_code::CorruptData, "Squeezed data too short"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Squeezed data too short"});
             }
 
             // Read number of nodes
             u16 num_nodes = read_u16_le(input.data());
             if (num_nodes > 257) {
-                return std::unexpected(error{error_code::CorruptData, "Invalid Huffman tree"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Invalid Huffman tree"});
             }
 
             size_t pos = 2;
             if (pos + num_nodes * 4 > input.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             // Read Huffman tree (array of node pairs)
@@ -246,21 +246,21 @@ namespace crate {
         archive->m_pimpl->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <arc_archive>> arc_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -269,7 +269,7 @@ namespace crate {
 
     result_t <byte_vector> arc_archive::extract(const file_entry& entry) {
         if (entry.folder_index >= m_pimpl->members_.size()) {
-            return std::unexpected(error{error_code::FileNotInArchive});
+            return crate::make_unexpected(error{error_code::FileNotInArchive});
         }
 
         const auto& member = m_pimpl->members_[entry.folder_index];
@@ -289,7 +289,7 @@ namespace crate {
 
             case arc::SQUEEZED: {
                 auto result = arc::unsqueeze(compressed);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 output = std::move(*result);
                 break;
             }
@@ -300,7 +300,7 @@ namespace crate {
             case arc::CRUNCHED: {
                 arc::lzw_decoder decoder(false);
                 auto result = decoder.decompress(compressed);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 output = std::move(*result);
                 break;
             }
@@ -311,13 +311,13 @@ namespace crate {
                 memory_input_stream input(compressed);
                 vector_output_stream output_stream(member.original_size);
                 auto result = decomp.decompress_stream(input, output_stream, member.original_size);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 output = output_stream.take();
                 break;
             }
 
             default:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Unsupported ARC compression method"
                 });
@@ -326,7 +326,7 @@ namespace crate {
         // Verify CRC (using CRC-16-IBM)
         u16 crc = eval_crc16_ibm(output);
         if (crc != member.crc16) {
-            return std::unexpected(error{error_code::InvalidChecksum, "CRC-16 mismatch"});
+            return crate::make_unexpected(error{error_code::InvalidChecksum, "CRC-16 mismatch"});
         }
 
         // Report byte-level progress
@@ -372,7 +372,7 @@ namespace crate {
 
             // Now need at least the rest of the header
             if (pos + HEADER_SIZE - 1 > m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             // Read filename (null-terminated, max 13 bytes)

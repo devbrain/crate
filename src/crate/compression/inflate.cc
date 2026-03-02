@@ -62,7 +62,7 @@ result_t<stream_result> inflate_decompressor::decompress_some(
     );
 
     if (status < TINFL_STATUS_DONE && status != TINFL_STATUS_NEEDS_MORE_INPUT) {
-        return std::unexpected(error{error_code::CorruptData, "DEFLATE decompression failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "DEFLATE decompression failed"});
     }
 
     if (status == TINFL_STATUS_DONE) {
@@ -130,7 +130,7 @@ result_t<stream_result> zlib_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!pimpl_->initialized) {
-        return std::unexpected(error{error_code::CorruptData, "zlib initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "zlib initialization failed"});
     }
 
     if (pimpl_->finished) {
@@ -162,7 +162,7 @@ result_t<stream_result> zlib_decompressor::decompress_some(
     }
 
     if (status != MZ_OK && status != MZ_BUF_ERROR) {
-        return std::unexpected(error{error_code::CorruptData, "zlib decompression failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "zlib decompression failed"});
     }
 
     if (bytes_written > 0) {
@@ -221,7 +221,7 @@ result_t<stream_result> gzip_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!pimpl_->initialized) {
-        return std::unexpected(error{error_code::CorruptData, "gzip initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "gzip initialization failed"});
     }
 
     if (pimpl_->finished) {
@@ -253,7 +253,7 @@ result_t<stream_result> gzip_decompressor::decompress_some(
     }
 
     if (status != MZ_OK && status != MZ_BUF_ERROR) {
-        return std::unexpected(error{error_code::CorruptData, "gzip decompression failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "gzip decompression failed"});
     }
 
     if (bytes_written > 0) {

@@ -160,7 +160,7 @@ namespace crate {
 
         result_t <void> parse_header() {
             if (header_buf_[6] != 'd' || header_buf_[7] != 'l' || header_buf_[8] != 'z') {
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidSignature,
                     "Not a valid DLZ/DIET file"
                 });
@@ -201,7 +201,7 @@ namespace crate {
                             header_buf_[header_pos_++] = static_cast <u8>(*in_ptr++);
                         } {
                             auto result = parse_header();
-                            if (!result) return std::unexpected(result.error());
+                            if (!result) return crate::make_unexpected(result.error());
                         }
                         state_ = state::PRIME_BIT_BUFFER;
                         break;
@@ -427,7 +427,7 @@ namespace crate {
                                 (static_cast <u16>(offset_hi_) << 8) | offset_lo_);
 
                             if (offset >= 0) {
-                                return std::unexpected(error{
+                                return crate::make_unexpected(error{
                                     error_code::CorruptData,
                                     "DLZ: invalid positive offset"
                                 });
@@ -435,7 +435,7 @@ namespace crate {
 
                             size_t distance = static_cast <size_t>(-static_cast <i32>(offset));
                             if (distance > history_pos_) {
-                                return std::unexpected(error{
+                                return crate::make_unexpected(error{
                                     error_code::CorruptData,
                                     "DLZ: offset exceeds history"
                                 });
@@ -470,7 +470,7 @@ namespace crate {
 
         need_input:
             if (input_finished) {
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::TruncatedArchive,
                     "Unexpected end of DIET data"
                 });

@@ -112,7 +112,7 @@ result_t<std::unique_ptr<libarchive_archive>> libarchive_archive::open(byte_span
 
     auto result = archive->parse();
     if (!result) {
-        return std::unexpected(result.error());
+        return crate::make_unexpected(result.error());
     }
 
     return archive;
@@ -121,7 +121,7 @@ result_t<std::unique_ptr<libarchive_archive>> libarchive_archive::open(byte_span
 result_t<std::unique_ptr<libarchive_archive>> libarchive_archive::open(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        return std::unexpected(error{error_code::FileNotFound, "Cannot open file"});
+        return crate::make_unexpected(error{error_code::FileNotFound, "Cannot open file"});
     }
 
     file.seekg(0, std::ios::end);
@@ -145,7 +145,7 @@ std::string libarchive_archive::format_name() const {
 void_result_t libarchive_archive::parse() {
     la_archive* a = archive_read_new();
     if (!a) {
-        return std::unexpected(error{error_code::CorruptData, "Failed to create archive reader"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Failed to create archive reader"});
     }
 
     // Enable all formats (core libarchive supports these without compression libs)
@@ -160,7 +160,7 @@ void_result_t libarchive_archive::parse() {
     if (r != ARCHIVE_OK) {
         std::string err = archive_error_string(a) ? archive_error_string(a) : "Unknown error";
         archive_read_free(a);
-        return std::unexpected(error{error_code::InvalidSignature, "Failed to open archive: " + err});
+        return crate::make_unexpected(error{error_code::InvalidSignature, "Failed to open archive: " + err});
     }
 
     // Get format name
@@ -204,7 +204,7 @@ void_result_t libarchive_archive::parse() {
 
 result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
     if (entry.folder_index >= pimpl_->entries_.size()) {
-        return std::unexpected(error{error_code::InvalidParameter, "Invalid entry index"});
+        return crate::make_unexpected(error{error_code::InvalidParameter, "Invalid entry index"});
     }
 
     // Check cache first to avoid O(N²) overhead when extracting multiple files
@@ -218,7 +218,7 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
     // Re-open archive and seek to the entry
     la_archive* a = archive_read_new();
     if (!a) {
-        return std::unexpected(error{error_code::CorruptData, "Failed to create archive reader"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Failed to create archive reader"});
     }
 
     archive_read_support_format_all(a);
@@ -229,7 +229,7 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
     int r = archive_read_open(a, &rd, nullptr, memory_read_callback, memory_close_callback);
     if (r != ARCHIVE_OK) {
         archive_read_free(a);
-        return std::unexpected(error{error_code::CorruptData, "Failed to reopen archive"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Failed to reopen archive"});
     }
 
     // Seek to the correct entry
@@ -248,14 +248,14 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                     // Guard against unbounded memory growth
                     if (output.size() + static_cast<size_t>(bytes_read) > MAX_EXTRACTION_SIZE) {
                         archive_read_free(a);
-                        return std::unexpected(error{error_code::AllocationLimitExceeded,
+                        return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
                             "Extraction size exceeds maximum allowed"});
                     }
                     output.insert(output.end(), buffer, buffer + bytes_read);
                 }
                 if (bytes_read < 0) {
                     archive_read_free(a);
-                    return std::unexpected(error{error_code::CorruptData, "Failed to read entry data"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to read entry data"});
                 }
                 archive_read_free(a);
                 if (byte_progress_cb_) {
@@ -268,7 +268,7 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                 // Guard against zip bombs - reject unreasonably large allocations
                 if (static_cast<size_t>(size) > MAX_EXTRACTION_SIZE) {
                     archive_read_free(a);
-                    return std::unexpected(error{error_code::AllocationLimitExceeded,
+                    return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
                         "Uncompressed size exceeds maximum allowed (" + std::to_string(size) + " bytes)"});
                 }
 
@@ -277,7 +277,7 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
                 archive_read_free(a);
 
                 if (bytes_read < 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Failed to read entry data"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to read entry data"});
                 }
                 if (static_cast<size_t>(bytes_read) != output.size()) {
                     output.resize(static_cast<size_t>(bytes_read));
@@ -295,7 +295,7 @@ result_t<byte_vector> libarchive_archive::extract(const file_entry& entry) {
     }
 
     archive_read_free(a);
-    return std::unexpected(error{error_code::FileNotFound, "Entry not found in archive"});
+    return crate::make_unexpected(error{error_code::FileNotFound, "Entry not found in archive"});
 }
 
 } // namespace crate

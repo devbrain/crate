@@ -67,13 +67,13 @@ namespace crate {
 
     result_t<kwaj::header> kwaj_decompressor::parse_header(byte_span data) {
         if (data.size() < 14) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Check signatures - KWAJ signature + variant marker (0x33 or 0xD1)
         if (std::memcmp(data.data(), kwaj::SIGNATURE1, 4) != 0 ||
             std::memcmp(data.data() + 4, kwaj::SIGNATURE2_PART, 3) != 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidSignature,
                 "Not a valid KWAJ file"
             });
@@ -81,7 +81,7 @@ namespace crate {
         // Byte 7 can be 0x33 or 0xD1 (two known variants)
         u8 variant = data[7];
         if (variant != 0x33 && variant != 0xD1) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidSignature,
                 "Unknown KWAJ variant"
             });
@@ -100,7 +100,7 @@ namespace crate {
 
         if (header.flags & kwaj::HAS_UNCOMPRESSED_LEN) {
             if (pos + 4 > data.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             header.uncompressed_len = read_u32_le(data.data() + pos);
             pos += 4;
@@ -108,7 +108,7 @@ namespace crate {
 
         if (header.flags & kwaj::HAS_UNKNOWN) {
             if (pos + 4 > data.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             header.unknown = read_u32_le(data.data() + pos);
             pos += 4;
@@ -116,7 +116,7 @@ namespace crate {
 
         if (header.flags & kwaj::HAS_DECOMPRESSED_LEN) {
             if (pos + 4 > data.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             header.decompressed_len = read_u32_le(data.data() + pos);
             pos += 4;
@@ -125,7 +125,7 @@ namespace crate {
         if (header.flags & kwaj::HAS_FILENAME) {
             // Filename is null-terminated, max 8 characters
             if (pos >= data.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             size_t name_start = pos;
             while (pos < data.size() && data[pos] != 0) {
@@ -133,7 +133,7 @@ namespace crate {
             }
             size_t name_len = pos - name_start;
             if (name_len > 8) {
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::InvalidHeader,
                     "KWAJ filename exceeds 8 characters"
                 });
@@ -161,7 +161,7 @@ namespace crate {
 
             if (ext_len > 0 && pos + ext_len <= data.size()) {
                 if (ext_len > 3) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::InvalidHeader,
                         "KWAJ extension exceeds 3 characters"
                     });
@@ -225,7 +225,7 @@ namespace crate {
                     if (pimpl_->header_bytes >= 8) {
                         if (std::memcmp(pimpl_->header_buf.data(), kwaj::SIGNATURE1, 4) != 0 ||
                             std::memcmp(pimpl_->header_buf.data() + 4, kwaj::SIGNATURE2_PART, 3) != 0) {
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::InvalidSignature,
                                 "Not a valid KWAJ file"
                             });
@@ -233,7 +233,7 @@ namespace crate {
 
                         u8 variant = pimpl_->header_buf[7];
                         if (variant != 0x33 && variant != 0xD1) {
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::InvalidSignature,
                                 "Unknown KWAJ variant"
                             });
@@ -256,7 +256,7 @@ namespace crate {
                             pimpl_->header_bytes
                         });
                         if (!header_result) {
-                            return std::unexpected(header_result.error());
+                            return crate::make_unexpected(header_result.error());
                         }
 
                         pimpl_->header = *header_result;
@@ -277,7 +277,7 @@ namespace crate {
                         }
 
                         if (input_finished && total_read >= input.size() && pimpl_->pending_input.empty()) {
-                            return std::unexpected(error{error_code::TruncatedArchive});
+                            return crate::make_unexpected(error{error_code::TruncatedArchive});
                         }
 
                         pimpl_->current_state = impl::state::DECOMPRESS_DATA;
@@ -287,7 +287,7 @@ namespace crate {
                     size_t available = input.size() - total_read;
                     if (available == 0) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::TruncatedArchive});
+                            return crate::make_unexpected(error{error_code::TruncatedArchive});
                         }
                         return stream_result::need_input(total_read, total_written);
                     }
@@ -392,7 +392,7 @@ namespace crate {
                                 inner_finished
                             );
                             if (!result) {
-                                return std::unexpected(result.error());
+                                return crate::make_unexpected(result.error());
                             }
 
                             if (using_pending) {
@@ -433,7 +433,7 @@ namespace crate {
                         }
 
                         default:
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::UnsupportedCompression,
                                 "Unknown KWAJ compression method"
                             });
@@ -452,7 +452,7 @@ namespace crate {
 
     result_t<size_t> kwaj_decompressor::decompress_xor(byte_span data, mutable_byte_span output) {
         if (output.size() < data.size()) {
-            return std::unexpected(error{error_code::OutputBufferOverflow});
+            return crate::make_unexpected(error{error_code::OutputBufferOverflow});
         }
         for (size_t i = 0; i < data.size(); i++) {
             output[i] = static_cast<byte>(data[i] ^ 0xFF);

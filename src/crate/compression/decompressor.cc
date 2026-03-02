@@ -35,13 +35,13 @@ result_t<size_t> decompressor::decompress(byte_span input, mutable_byte_span out
 
         if (remaining_output.empty()) {
             clear_expected();
-            return std::unexpected(error{error_code::OutputBufferOverflow, "Output buffer too small"});
+            return crate::make_unexpected(error{error_code::OutputBufferOverflow, "Output buffer too small"});
         }
 
         auto result = decompress_some(remaining_input, remaining_output, true);
         if (!result) {
             clear_expected();
-            return std::unexpected(result.error());
+            return crate::make_unexpected(result.error());
         }
 
         total_read += result->bytes_read;
@@ -54,7 +54,7 @@ result_t<size_t> decompressor::decompress(byte_span input, mutable_byte_span out
         // If no progress was made, we're stuck
         if (result->bytes_read == 0 && result->bytes_written == 0) {
             clear_expected();
-            return std::unexpected(error{error_code::CorruptData, "Decompression stalled"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Decompression stalled"});
         }
     }
 

@@ -103,11 +103,11 @@ result_t<stream_result> stuffit_huffman_decompressor::decompress_some(
     if (state_ == state::BUILD_TREE) {
         auto result = try_parse_node(in_ptr, in_end);
         if (!result) {
-            return std::unexpected(result.error());
+            return crate::make_unexpected(result.error());
         }
         if (!*result) {
             if (input_finished) {
-                return std::unexpected(error{error_code::CorruptData, "Incomplete Huffman tree"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Incomplete Huffman tree"});
             }
             return stream_result::need_input(bytes_read(), bytes_written());
         }
@@ -136,12 +136,12 @@ result_t<stream_result> stuffit_huffman_decompressor::decompress_some(
             }
 
             if (decode_node_ >= tree_.size()) {
-                return std::unexpected(error{error_code::CorruptData, "Invalid Huffman tree reference"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Invalid Huffman tree reference"});
             }
         }
 
         if (decode_node_ >= tree_.size()) {
-            return std::unexpected(error{error_code::CorruptData, "Invalid tree node"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Invalid tree node"});
         }
 
         // Output the leaf value

@@ -38,7 +38,7 @@ result_t<stream_result> brotli_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!pimpl_->state) {
-        return std::unexpected(error{error_code::CorruptData, "brotli state initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "brotli state initialization failed"});
     }
 
     if (pimpl_->finished) {
@@ -71,12 +71,12 @@ result_t<stream_result> brotli_decompressor::decompress_some(
 
     if (result == BROTLI_DECODER_RESULT_ERROR) {
         BrotliDecoderErrorCode err = BrotliDecoderGetErrorCode(pimpl_->state);
-        return std::unexpected(error{error_code::CorruptData,
+        return crate::make_unexpected(error{error_code::CorruptData,
             std::string("brotli decompression failed: ") + BrotliDecoderErrorString(err)});
     }
 
     if (result == BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT && input_finished && available_in == 0) {
-        return std::unexpected(error{error_code::CorruptData, "Unexpected end of brotli input"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Unexpected end of brotli input"});
     }
 
     // Report progress before returning status

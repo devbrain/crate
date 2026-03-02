@@ -83,21 +83,21 @@ namespace crate {
         archive->m_pimpl->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <chm_archive>> chm_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -112,7 +112,7 @@ namespace crate {
 
         // Need compressed content and valid parameters
         if (m_pimpl->compressed_length_ == 0 || m_pimpl->uncompressed_length_ == 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::UnsupportedCompression,
                 "CHM missing compression metadata"
             });
@@ -121,7 +121,7 @@ namespace crate {
         // Create LZX decompressor in CHM mode
         auto dec = lzx_decompressor::create(m_pimpl->lzx_window_bits_, lzx_mode::chm);
         if (!dec) {
-            return std::unexpected(dec.error());
+            return crate::make_unexpected(dec.error());
         }
 
         // Decompress entire content
@@ -169,12 +169,12 @@ namespace crate {
 
         if (!result) {
             m_pimpl->decompressed_content_.clear();
-            return std::unexpected(result.error());
+            return crate::make_unexpected(result.error());
         }
 
         if (result->status != decode_status::done) {
             m_pimpl->decompressed_content_.clear();
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::CorruptData,
                 "LZX decompression incomplete: read=" + std::to_string(result->bytes_read) +
                 " written=" + std::to_string(result->bytes_written) +
@@ -193,7 +193,7 @@ namespace crate {
                     // Uncompressed section - content starts after section 1 (directory)
                     u64 file_offset = m_pimpl->content_base_offset_ + ie.offset;
                     if (file_offset + ie.length > m_pimpl->data_.size()) {
-                        return std::unexpected(error{error_code::TruncatedArchive});
+                        return crate::make_unexpected(error{error_code::TruncatedArchive});
                     }
 
                     byte_vector result(ie.length);
@@ -208,12 +208,12 @@ namespace crate {
                     // Compressed section - decompress if needed
                     auto decomp_result = decompress_content();
                     if (!decomp_result) {
-                        return std::unexpected(decomp_result.error());
+                        return crate::make_unexpected(decomp_result.error());
                     }
 
                     // Extract from decompressed content
                     if (ie.offset + ie.length > m_pimpl->decompressed_content_.size()) {
-                        return std::unexpected(error{error_code::TruncatedArchive});
+                        return crate::make_unexpected(error{error_code::TruncatedArchive});
                     }
 
                     byte_vector result(ie.length);
@@ -228,15 +228,15 @@ namespace crate {
             }
         }
 
-        return std::unexpected(error{error_code::FileNotInArchive});
+        return crate::make_unexpected(error{error_code::FileNotInArchive});
     }
 
     void_result_t chm_archive::extract(const file_entry& entry, const std::filesystem::path& dest) {
         auto data = extract(entry);
-        if (!data) return std::unexpected(data.error());
+        if (!data) return crate::make_unexpected(data.error());
 
         auto output = file_output_stream::create(dest);
-        if (!output) return std::unexpected(output.error());
+        if (!output) return crate::make_unexpected(output.error());
 
         return output->write(*data);
     }
@@ -283,14 +283,14 @@ namespace crate {
         // Check signature first (only need 4 bytes)
         if (m_pimpl->data_.size() < 4 ||
             std::memcmp(m_pimpl->data_.data(), chm::ITSF_SIGNATURE, 4) != 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidSignature,
                 "Not a valid CHM file"
             });
         }
 
         if (m_pimpl->data_.size() < 56) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         const u8* p = m_pimpl->data_.data() + 4;
@@ -325,7 +325,7 @@ namespace crate {
         u8 value = 0;
         do {
             if (pos >= data.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             value = data[pos++];
             result = (result << 7) | (value & 0x7F);
@@ -337,13 +337,13 @@ namespace crate {
     void_result_t chm_archive::parse_directory() {
         auto section1_start = static_cast <size_t>(m_pimpl->itsf_.section1_offset);
         if (section1_start + 84 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Parse ITSP header
         const u8* p = m_pimpl->data_.data() + section1_start;
         if (std::memcmp(p, chm::ITSP_SIGNATURE, 4) != 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidHeader,
                 "Invalid ITSP header"
             });
@@ -392,7 +392,7 @@ namespace crate {
                 while (pos < entries_end) {
                     // Read entry name
                     auto name_len = read_encint(chunk_data, pos);
-                    if (!name_len) return std::unexpected(name_len.error());
+                    if (!name_len) return crate::make_unexpected(name_len.error());
 
                     if (pos + *name_len > entries_end) break;
 
@@ -402,15 +402,15 @@ namespace crate {
 
                     // Read section
                     auto section = read_encint(chunk_data, pos);
-                    if (!section) return std::unexpected(section.error());
+                    if (!section) return crate::make_unexpected(section.error());
 
                     // Read offset
                     auto offset = read_encint(chunk_data, pos);
-                    if (!offset) return std::unexpected(offset.error());
+                    if (!offset) return crate::make_unexpected(offset.error());
 
                     // Read length
                     auto length = read_encint(chunk_data, pos);
-                    if (!length) return std::unexpected(length.error());
+                    if (!length) return crate::make_unexpected(length.error());
 
                     impl::internal_entry entry;
                     entry.name = name;

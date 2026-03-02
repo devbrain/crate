@@ -421,7 +421,7 @@ namespace crate {
                         // Special case for KwKwK string
                         if (code >= free_ent_) {
                             if (code > free_ent_ || oldcode < 0) {
-                                return std::unexpected(error{error_code::CorruptData, "Bad LZW code"});
+                                return crate::make_unexpected(error{error_code::CorruptData, "Bad LZW code"});
                             }
                             stack_[stack_ptr_++] = static_cast <u8>(finchar);
                             code = oldcode;
@@ -430,7 +430,7 @@ namespace crate {
                         // Walk the chain to build output
                         while (code >= 256) {
                             if (stack_ptr_ >= sizeof(stack_)) {
-                                return std::unexpected(error{error_code::CorruptData, "LZW stack overflow"});
+                                return crate::make_unexpected(error{error_code::CorruptData, "LZW stack overflow"});
                             }
                             stack_[stack_ptr_++] = tab_suffix_[code];
                             code = tab_prefix_[code];
@@ -607,7 +607,7 @@ namespace crate {
 
     result_t <void> stuffit_archive::impl::parse() {
         if (data_.size() < 22) {
-            return std::unexpected(error{error_code::CorruptData, "File too small"});
+            return crate::make_unexpected(error{error_code::CorruptData, "File too small"});
         }
 
         // Check signature
@@ -619,7 +619,7 @@ namespace crate {
             return parse_v5_format();
         }
 
-        return std::unexpected(error{error_code::CorruptData, "Unknown StuffIt format"});
+        return crate::make_unexpected(error{error_code::CorruptData, "Unknown StuffIt format"});
     }
 
     result_t <void> stuffit_archive::impl::parse_old_format() {
@@ -662,7 +662,7 @@ namespace crate {
         bytes_consumed = 0;
 
         if (pos + OLD_MEMBER_HEADER_SIZE > data_.size()) {
-            return std::unexpected(error{error_code::InputBufferUnderflow, "Truncated member header"});
+            return crate::make_unexpected(error{error_code::InputBufferUnderflow, "Truncated member header"});
         }
 
         const byte* hdr = data_.data() + pos;
@@ -751,7 +751,7 @@ namespace crate {
 
         if (member.is_folder) {
             if (subdir_level >= MAX_NESTING_LEVEL) {
-                return std::unexpected(error{error_code::CorruptData, "Too many nested folders"});
+                return crate::make_unexpected(error{error_code::CorruptData, "Too many nested folders"});
             }
             subdir_level++;
             // Don't pop path for folders - they stay on stack until end marker
@@ -779,7 +779,7 @@ namespace crate {
         // 98-99: archive CRC
 
         if (data_.size() < 100) {
-            return std::unexpected(error{error_code::CorruptData, "File too small for v5 header"});
+            return crate::make_unexpected(error{error_code::CorruptData, "File too small for v5 header"});
         }
 
         version_ = data_[82];
@@ -812,20 +812,20 @@ namespace crate {
         next_pos = 0;
 
         if (pos == 0 || pos + 48 > data_.size()) {
-            return std::unexpected(error{error_code::InputBufferUnderflow, "Invalid member position"});
+            return crate::make_unexpected(error{error_code::InputBufferUnderflow, "Invalid member position"});
         }
 
         const byte* base = data_.data() + pos;
 
         // Check magic
         if (read_u32be(base) != 0xa5a5a5a5) {
-            return std::unexpected(error{error_code::CorruptData, "Invalid v5 member magic"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Invalid v5 member magic"});
         }
 
         u8 version = base[4];
         u16 hdr_size = read_u16be(base + 6);
         if (hdr_size < 48 || pos + hdr_size > data_.size()) {
-            return std::unexpected(error{error_code::CorruptData, "Invalid header size"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Invalid header size"});
         }
 
         member_info member;
@@ -954,11 +954,11 @@ namespace crate {
         }
 
         if (fork.data_offset + fork.compressed_size > data_.size()) {
-            return std::unexpected(error{error_code::InputBufferUnderflow, "Fork data out of bounds"});
+            return crate::make_unexpected(error{error_code::InputBufferUnderflow, "Fork data out of bounds"});
         }
 
         if (fork.is_encrypted) {
-            return std::unexpected(error{error_code::PasswordRequired, "Encrypted files not supported"});
+            return crate::make_unexpected(error{error_code::PasswordRequired, "Encrypted files not supported"});
         }
 
         byte_span compressed(data_.data() + fork.data_offset, fork.compressed_size);
@@ -967,7 +967,7 @@ namespace crate {
         switch (fork.method) {
             case stuffit::compression_method::none:
                 if (fork.compressed_size != fork.uncompressed_size) {
-                    return std::unexpected(error{error_code::CorruptData, "Size mismatch for uncompressed"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Size mismatch for uncompressed"});
                 }
                 std::memcpy(output.data(), compressed.data(), fork.uncompressed_size);
                 break;
@@ -975,7 +975,7 @@ namespace crate {
             case stuffit::compression_method::rle: {
                 stuffit_rle_decompressor decompressor;
                 auto result = decompressor.decompress_some(compressed, output, true);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != fork.uncompressed_size) {
                     output.resize(result->bytes_written);
                 }
@@ -985,7 +985,7 @@ namespace crate {
             case stuffit::compression_method::huffman: {
                 stuffit_huffman_decompressor decompressor;
                 auto result = decompressor.decompress_some(compressed, output, true);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != fork.uncompressed_size) {
                     output.resize(result->bytes_written);
                 }
@@ -995,7 +995,7 @@ namespace crate {
             case stuffit::compression_method::lz_huffman: {
                 stuffit_method13_decompressor decompressor;
                 auto result = decompressor.decompress_some(compressed, output, true);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != fork.uncompressed_size) {
                     output.resize(result->bytes_written);
                 }
@@ -1005,7 +1005,7 @@ namespace crate {
             case stuffit::compression_method::arsenic: {
                 stuffit_arsenic_decompressor decompressor;
                 auto result = decompressor.decompress_some(compressed, output, true);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != fork.uncompressed_size) {
                     output.resize(result->bytes_written);
                 }
@@ -1015,7 +1015,7 @@ namespace crate {
             case stuffit::compression_method::lzw: {
                 stuffit_lzw_decompressor decompressor;
                 auto result = decompressor.decompress_some(compressed, output, true);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != fork.uncompressed_size) {
                     output.resize(result->bytes_written);
                 }
@@ -1026,7 +1026,7 @@ namespace crate {
                 // Method 14 in v5 format uses raw Deflate (RFC 1951)
                 inflate_decompressor inflater;
                 auto result = inflater.decompress(compressed, output);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (*result != fork.uncompressed_size) {
                     output.resize(*result);
                 }
@@ -1036,13 +1036,13 @@ namespace crate {
             case stuffit::compression_method::lzah:
             case stuffit::compression_method::fixed_huffman:
             case stuffit::compression_method::mw:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Compression method not yet implemented"
                 });
 
             default:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Unknown compression method"
                 });
@@ -1065,7 +1065,7 @@ namespace crate {
 
         auto result = archive->pimpl_->parse();
         if (!result) {
-            return std::unexpected(result.error());
+            return crate::make_unexpected(result.error());
         }
 
         return archive;
@@ -1077,7 +1077,7 @@ namespace crate {
 
     result_t <byte_vector> stuffit_archive::extract(const file_entry& entry) {
         if (entry.folder_index >= pimpl_->members_.size()) {
-            return std::unexpected(error{error_code::InvalidParameter, "Invalid entry"});
+            return crate::make_unexpected(error{error_code::InvalidParameter, "Invalid entry"});
         }
 
         const auto& member = pimpl_->members_[entry.folder_index];

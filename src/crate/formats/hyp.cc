@@ -44,10 +44,10 @@ namespace crate {
                     while (output.size() < original_size) {
                         clear_when_full();
                         auto result = read_smart();
-                        if (!result) return std::unexpected(result.error());
+                        if (!result) return crate::make_unexpected(result.error());
 
                         auto decode_result = decode_data(output, original_size);
-                        if (!decode_result) return std::unexpected(decode_result.error());
+                        if (!decode_result) return crate::make_unexpected(decode_result.error());
 
                         u16 block_end = teststrings_index_ << 1;
                         if (block_end >= 2 * 255) {
@@ -559,7 +559,7 @@ namespace crate {
                         while (true) {
                             steps++;
                             if (steps > 65536) {
-                                return std::unexpected(error{
+                                return crate::make_unexpected(error{
                                     error_code::CorruptData, "HYP decode step limit exceeded"
                                 });
                             }
@@ -672,21 +672,21 @@ namespace crate {
         archive->m_pimpl->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <hyp_archive>> hyp_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -695,12 +695,12 @@ namespace crate {
 
     result_t <byte_vector> hyp_archive::extract(const file_entry& entry) {
         if (entry.folder_index >= m_pimpl->members_.size()) {
-            return std::unexpected(error{error_code::FileNotInArchive});
+            return crate::make_unexpected(error{error_code::FileNotInArchive});
         }
 
         const auto& member = m_pimpl->members_[entry.folder_index];
         if (entry.folder_offset + member.compressed_size > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         byte_span compressed(m_pimpl->data_.data() + entry.folder_offset, member.compressed_size);
@@ -708,7 +708,7 @@ namespace crate {
         // Verify checksum on compressed data
         u32 calc_checksum = hyp::hyp_checksum(compressed);
         if (calc_checksum != member.checksum) {
-            return std::unexpected(error{error_code::InvalidChecksum, "HYP checksum mismatch"});
+            return crate::make_unexpected(error{error_code::InvalidChecksum, "HYP checksum mismatch"});
         }
 
         byte_vector output;
@@ -726,15 +726,15 @@ namespace crate {
                     mutable_byte_span(output.data(), output.size()),
                     true
                 );
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != member.original_size) {
-                    return std::unexpected(error{error_code::CorruptData, "Incomplete HYP decompression"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Incomplete HYP decompression"});
                 }
                 break;
             }
 
             default:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Unknown HYP compression method"
                 });
@@ -759,7 +759,7 @@ namespace crate {
             pos++;
 
             if (pos + hyp::HEADER_SIZE > m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             hyp::file_header member;
@@ -783,7 +783,7 @@ namespace crate {
             // Read name length and name
             u8 name_length = m_pimpl->data_[pos++];
             if (pos + name_length > m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             member.name.assign(reinterpret_cast <const char*>(m_pimpl->data_.data() + pos), name_length);
@@ -808,7 +808,7 @@ namespace crate {
 
         // If no files found, this is not a valid HYP archive
         if (m_pimpl->files_.empty()) {
-            return std::unexpected(error{error_code::InvalidSignature, "Not a HYP archive"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Not a HYP archive"});
         }
 
         return {};

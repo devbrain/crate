@@ -46,7 +46,7 @@ result_t<stream_result> xz_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!pimpl_->initialized) {
-        return std::unexpected(error{error_code::CorruptData, "xz initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "xz initialization failed"});
     }
 
     if (pimpl_->finished) {
@@ -82,7 +82,7 @@ result_t<stream_result> xz_decompressor::decompress_some(
             case LZMA_BUF_ERROR: err_msg = "buffer error"; break;
             default: break;
         }
-        return std::unexpected(error{error_code::CorruptData,
+        return crate::make_unexpected(error{error_code::CorruptData,
             std::string("xz decompression failed: ") + err_msg});
     }
 
@@ -143,7 +143,7 @@ result_t<stream_result> lzma_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!pimpl_->initialized) {
-        return std::unexpected(error{error_code::CorruptData, "lzma initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "lzma initialization failed"});
     }
 
     if (pimpl_->finished) {
@@ -179,7 +179,7 @@ result_t<stream_result> lzma_decompressor::decompress_some(
             case LZMA_BUF_ERROR: err_msg = "buffer error"; break;
             default: break;
         }
-        return std::unexpected(error{error_code::CorruptData,
+        return crate::make_unexpected(error{error_code::CorruptData,
             std::string("lzma decompression failed: ") + err_msg});
     }
 

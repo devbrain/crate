@@ -218,14 +218,14 @@ result_t<bool> ace_lz_decompressor::build_huffman_tree(
         int sym = sorted_symbols[i];
         int wdt = sorted_widths[i];
         if (wdt > max_width) {
-            return std::unexpected(error{error_code::CorruptData, "Huffman: width > max_width"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Huffman: width > max_width"});
         }
         size_t repeat = 1u << (max_width - wdt);
         for (size_t j = 0; j < repeat; j++) {
             tree.codes.push_back(static_cast<u16>(sym));
         }
         if (tree.codes.size() > max_codes) {
-            return std::unexpected(error{error_code::CorruptData, "Huffman: codes > max_codes"});
+            return crate::make_unexpected(error{error_code::CorruptData, "Huffman: codes > max_codes"});
         }
     }
 
@@ -238,7 +238,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!expected_output_set()) {
-        return std::unexpected(error{
+        return crate::make_unexpected(error{
             error_code::InvalidParameter,
             "Expected size required for bounded decompression"
         });
@@ -349,7 +349,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                     std::cerr << std::endl;
                 }
                 auto r = build_huffman_tree(tree_width_widths_, MAXWIDTHWIDTH, width_tree_);
-                if (!r) return std::unexpected(r.error());
+                if (!r) return crate::make_unexpected(r.error());
                 if (g_debug) {
                     std::cerr << "Width tree built, codes.size=" << width_tree_.codes.size()
                               << " max_width=" << width_tree_.max_width << std::endl;
@@ -434,7 +434,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                               << " total=" << tree_widths_.size() << std::endl;
                 }
                 auto r = build_huffman_tree(tree_widths_, MAXCODEWIDTH, main_tree_);
-                if (!r) return std::unexpected(r.error());
+                if (!r) return crate::make_unexpected(r.error());
                 if (g_debug) {
                     std::cerr << "[STREAM] main_tree codes[1178]=" << main_tree_.codes[1178]
                               << " widths[32]=" << static_cast<int>(main_tree_.widths[32])
@@ -483,7 +483,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
 
             case state::BUILD_LEN_WIDTH_TREE: {
                 auto r = build_huffman_tree(tree_width_widths_, MAXWIDTHWIDTH, width_tree_);
-                if (!r) return std::unexpected(r.error());
+                if (!r) return crate::make_unexpected(r.error());
                 tree_widths_.clear();
                 state_ = state::READ_LEN_TREE_WIDTHS;
                 break;
@@ -530,7 +530,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                 }
                 // Don't pad - use the exact number of widths read
                 auto r = build_huffman_tree(tree_widths_, MAXCODEWIDTH, len_tree_);
-                if (!r) return std::unexpected(r.error());
+                if (!r) return crate::make_unexpected(r.error());
                 state_ = state::READ_SYMS_COUNT;
                 break;
             }
@@ -599,7 +599,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                 } else if (symbol == TYPECODE) {
                     state_ = state::READ_MODE_TYPE;
                 } else {
-                    return std::unexpected(error{error_code::CorruptData, "ACE LZ77 invalid symbol"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "ACE LZ77 invalid symbol"});
                 }
                 break;
             }
@@ -711,7 +711,7 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                                       << " window.size=" << window_.size()
                                       << " len=" << copy_len_ << " pos=" << copy_pos_ << std::endl;
                         }
-                        return std::unexpected(error{error_code::CorruptData, "ACE LZ77 copy source out of bounds"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "ACE LZ77 copy source out of bounds"});
                     }
 
                     // Source index: window_.size() already accounts for bytes output so far

@@ -22,7 +22,7 @@ namespace offsets {
 
 result_t<bpb> parse_bpb(byte_span data) {
     if (data.size() < 512) {
-        return std::unexpected(error{error_code::InvalidHeader, "Boot sector too small"});
+        return crate::make_unexpected(error{error_code::InvalidHeader, "Boot sector too small"});
     }
 
     const u8* p = data.data();
@@ -34,7 +34,7 @@ result_t<bpb> parse_bpb(byte_span data) {
             // Some images have different third byte, just warn mentally
         }
     } else if (p[offsets::JUMP_BOOT] != 0xE9) {
-        return std::unexpected(error{error_code::InvalidHeader, "Invalid boot sector jump instruction"});
+        return crate::make_unexpected(error{error_code::InvalidHeader, "Invalid boot sector jump instruction"});
     }
 
     bpb result{};
@@ -61,7 +61,7 @@ result_t<bpb> parse_bpb(byte_span data) {
         case 4096:
             break;
         default:
-            return std::unexpected(error{error_code::InvalidHeader,
+            return crate::make_unexpected(error{error_code::InvalidHeader,
                 "Invalid bytes per sector: " + std::to_string(result.bytes_per_sector)});
     }
 
@@ -71,26 +71,26 @@ result_t<bpb> parse_bpb(byte_span data) {
         case 16: case 32: case 64: case 128:
             break;
         default:
-            return std::unexpected(error{error_code::InvalidHeader,
+            return crate::make_unexpected(error{error_code::InvalidHeader,
                 "Invalid sectors per cluster: " + std::to_string(result.sectors_per_cluster)});
     }
 
     // Validate media type (0xF0 or 0xF8-0xFF)
     if (media != 0xF0 && media < 0xF8) {
-        return std::unexpected(error{error_code::InvalidHeader,
+        return crate::make_unexpected(error{error_code::InvalidHeader,
             "Invalid media type: " + std::to_string(media)});
     }
 
     // Validate root entry count alignment
     u32 root_dir_bytes = result.root_entry_count * 32;
     if (root_dir_bytes % result.bytes_per_sector != 0) {
-        return std::unexpected(error{error_code::InvalidHeader,
+        return crate::make_unexpected(error{error_code::InvalidHeader,
             "Root entry count not sector-aligned"});
     }
 
     // Validate we have sectors
     if (result.total_sectors == 0) {
-        return std::unexpected(error{error_code::InvalidHeader, "Total sectors is zero"});
+        return crate::make_unexpected(error{error_code::InvalidHeader, "Total sectors is zero"});
     }
 
     // Calculate derived values
@@ -110,7 +110,7 @@ result_t<bpb> parse_bpb(byte_span data) {
     } else if (result.cluster_count < 65525) {
         result.type = fat_type::FAT16;
     } else {
-        return std::unexpected(error{error_code::UnsupportedCompression,
+        return crate::make_unexpected(error{error_code::UnsupportedCompression,
             "FAT32 is not supported"});
     }
 

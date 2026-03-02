@@ -50,7 +50,7 @@ namespace crate {
 
             void_result_t seek(size_t pos) {
                 if (pos > data_.size()) {
-                    return std::unexpected(error{error_code::SeekError, "Seek past end of buffer"});
+                    return crate::make_unexpected(error{error_code::SeekError, "Seek past end of buffer"});
                 }
                 pos_ = pos;
                 return {};
@@ -72,7 +72,7 @@ namespace crate {
             static result_t <file_input_stream> open(const std::filesystem::path& path) {
                 std::ifstream file(path, std::ios::binary);
                 if (!file) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::FileNotFound,
                         "Failed to open: " + path.string()
                     });
@@ -81,7 +81,7 @@ namespace crate {
                 file.seekg(0, std::ios::end);
                 auto pos = file.tellg();
                 if (pos < 0) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::ReadError,
                         "Failed to determine file size: " + path.string()
                     });
@@ -96,7 +96,7 @@ namespace crate {
                 file_.read(reinterpret_cast <char*>(buffer.data()),
                            static_cast <std::streamsize>(buffer.size()));
                 if (file_.bad()) {
-                    return std::unexpected(error{error_code::ReadError});
+                    return crate::make_unexpected(error{error_code::ReadError});
                 }
                 return static_cast <size_t>(file_.gcount());
             }
@@ -104,14 +104,14 @@ namespace crate {
             void_result_t seek(size_t pos) {
                 file_.seekg(static_cast <std::streamoff>(pos));
                 if (file_.fail()) {
-                    return std::unexpected(error{error_code::SeekError});
+                    return crate::make_unexpected(error{error_code::SeekError});
                 }
                 return {};
             }
 
             [[nodiscard]] result_t<size_t> tell() const {
                 auto pos = file_.tellg();
-                if (pos < 0) return std::unexpected(error{error_code::SeekError});
+                if (pos < 0) return crate::make_unexpected(error{error_code::SeekError});
                 return static_cast<size_t>(pos);
             }
 
@@ -156,7 +156,7 @@ namespace crate {
 
                 std::ofstream file(path, std::ios::binary | std::ios::trunc);
                 if (!file) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::WriteError,
                         "Failed to create: " + path.string()
                     });
@@ -168,7 +168,7 @@ namespace crate {
                 file_.write(reinterpret_cast <const char*>(data.data()),
                             static_cast <std::streamsize>(data.size()));
                 if (file_.fail()) {
-                    return std::unexpected(error{error_code::WriteError});
+                    return crate::make_unexpected(error{error_code::WriteError});
                 }
                 return {};
             }

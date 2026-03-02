@@ -708,7 +708,7 @@ result_t<stream_result> hp_decompressor::decompress_some(
             case state::READ_SMART: {
                 if (!process_read_smart()) {
                     // Shouldn't happen after buffering all input
-                    return std::unexpected(error{error_code::InputBufferUnderflow, "HYP: unexpected end of input"});
+                    return crate::make_unexpected(error{error_code::InputBufferUnderflow, "HYP: unexpected end of input"});
                 }
 
                 teststrings_index_ >>= 1;

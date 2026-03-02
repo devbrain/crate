@@ -218,7 +218,14 @@ add_library(crate_objects OBJECT
 # Required for shared library builds
 set_target_properties(crate_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_compile_features(crate_objects PUBLIC cxx_std_23)
+target_compile_features(crate_objects PUBLIC cxx_std_20)
+
+# Mark tl::expected includes as SYSTEM to suppress warnings from third-party code
+get_target_property(_expected_inc tl::expected INTERFACE_INCLUDE_DIRECTORIES)
+if(_expected_inc)
+    target_include_directories(crate_objects SYSTEM PUBLIC ${_expected_inc})
+endif()
+target_link_libraries(crate_objects PUBLIC tl::expected)
 
 target_include_directories(crate_objects
         PUBLIC
@@ -261,7 +268,9 @@ neutrino_library_type(crate _lib_type)
 add_library(crate ${_lib_type} $<TARGET_OBJECTS:crate_objects>)
 add_library(neutrino::crate ALIAS crate)
 
-target_compile_features(crate PUBLIC cxx_std_23)
+target_compile_features(crate PUBLIC cxx_std_20)
+
+target_link_libraries(crate PUBLIC tl::expected)
 
 target_include_directories(crate
         PUBLIC

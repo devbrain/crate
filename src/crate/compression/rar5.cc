@@ -222,7 +222,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 block_header_.table_present = (header_flags_ & 0x80) != 0;
 
                 if (header_byte_count_ == 4) {
-                    return std::unexpected(error{error_code::CorruptData, "Invalid RAR5 block header byte count"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid RAR5 block header byte count"});
                 }
 
                 state_ = state::READ_BLOCK_HEADER_CHECKSUM;
@@ -233,7 +233,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 checksum = 0;
                 if (!try_read_bits(in_ptr, in_end, 8, checksum)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -250,7 +250,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                     u32 byte_val = 0;
                     if (!try_read_bits(in_ptr, in_end, 8, byte_val)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -264,7 +264,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                                    static_cast<u8>(block_header_.block_size >> 8) ^
                                    static_cast<u8>(block_header_.block_size >> 16);
                 if (calc_checksum != header_checksum_) {
-                    return std::unexpected(error{error_code::CorruptData, "RAR5 block header checksum mismatch"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "RAR5 block header checksum mismatch"});
                 }
 
                 // Track block content start position using total bits consumed
@@ -274,7 +274,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                     table_index_ = 0;
                     state_ = state::READ_TABLES_BIT_LENGTH;
                 } else if (!tables_read_) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "No Huffman tables in RAR5 stream"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "No Huffman tables in RAR5 stream"});
                 } else {
                     state_ = state::DECODE_SYMBOL;
                 }
@@ -286,7 +286,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                     u32 len = 0;
                     if (!try_read_bits(in_ptr, in_end, 4, len)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -313,7 +313,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 zero_count = 0;
                 if (!try_read_bits(in_ptr, in_end, 4, zero_count)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -336,7 +336,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                     unsigned num = 0;
                     if (!try_decode_number(in_ptr, in_end, tables_.bd, num)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -367,7 +367,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 count = 0;
                 if (!try_read_bits(in_ptr, in_end, bits_needed, count)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -379,7 +379,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 }
 
                 if (table_index_ == 0) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Cannot repeat at start of table"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Cannot repeat at start of table"});
                 }
 
                 while (count-- > 0 && table_index_ < table_size_) {
@@ -398,7 +398,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 count = 0;
                 if (!try_read_bits(in_ptr, in_end, bits_needed, count)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -448,7 +448,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                             state_ = state::DONE;
                             return stream_result::done(bytes_read(), bytes_written());
                         }
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -501,7 +501,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 byte_count = 0;
                 if (!try_read_bits(in_ptr, in_end, 2, byte_count)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -517,7 +517,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                     u32 byte_val = 0;
                     if (!try_read_bits(in_ptr, in_end, 8, byte_val)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -533,7 +533,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 byte_count = 0;
                 if (!try_read_bits(in_ptr, in_end, 2, byte_count)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -549,7 +549,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                     u32 byte_val = 0;
                     if (!try_read_bits(in_ptr, in_end, 8, byte_val)) {
                         if (input_finished) {
-                            return std::unexpected(error{error_code::InputBufferUnderflow});
+                            return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                         }
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
@@ -565,7 +565,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 filter_type = 0;
                 if (!try_read_bits(in_ptr, in_end, 3, filter_type)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -601,7 +601,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 channels = 0;
                 if (!try_read_bits(in_ptr, in_end, 5, channels)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -633,7 +633,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 unsigned length_num = 0;
                 if (!try_decode_number(in_ptr, in_end, tables_.rd, length_num)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -664,7 +664,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 extra = 0;
                 if (!try_read_bits(in_ptr, in_end, length_lbits_, extra)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -686,7 +686,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 extra = 0;
                 if (!try_read_bits(in_ptr, in_end, length_lbits_, extra)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -699,7 +699,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 unsigned dist_slot = 0;
                 if (!try_decode_number(in_ptr, in_end, tables_.dd, dist_slot)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -750,7 +750,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 extra = 0;
                 if (!try_read_bits(in_ptr, in_end, high_bits, extra)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -763,7 +763,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 unsigned low_dist = 0;
                 if (!try_decode_number(in_ptr, in_end, tables_.ldd, low_dist)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
@@ -791,7 +791,7 @@ result_t<stream_result> rar5_decompressor::decompress_some(
                 u32 extra = 0;
                 if (!try_read_bits(in_ptr, in_end, cur_d_bits_, extra)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }

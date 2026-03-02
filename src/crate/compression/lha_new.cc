@@ -338,7 +338,7 @@ result_t<stream_result> lha_new_decompressor::decompress_some(
 
             case state::BUILD_TEMP_TREE: {
                 if (!temp_tree_.build(tree_lengths_.data(), tree_ncodes_)) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to build temp tree"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to build temp tree"});
                 }
                 state_ = state::READ_CODE_NCODES;
                 break;
@@ -378,7 +378,7 @@ result_t<stream_result> lha_new_decompressor::decompress_some(
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
                     if (code < 0) {
-                        return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to decode temp symbol"});
+                        return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to decode temp symbol"});
                     }
 
                     if (code <= 2) {
@@ -424,7 +424,7 @@ result_t<stream_result> lha_new_decompressor::decompress_some(
 
             case state::BUILD_CODE_TREE: {
                 if (!code_tree_.build(tree_lengths_.data(), tree_ncodes_)) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to build code tree"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to build code tree"});
                 }
                 state_ = state::READ_OFF_NCODES;
                 break;
@@ -478,7 +478,7 @@ result_t<stream_result> lha_new_decompressor::decompress_some(
 
             case state::BUILD_OFF_TREE: {
                 if (!offset_tree_.build(tree_lengths_.data(), tree_ncodes_)) {
-                    return std::unexpected(error{error_code::InvalidHuffmanTable, "Failed to build offset tree"});
+                    return crate::make_unexpected(error{error_code::InvalidHuffmanTable, "Failed to build offset tree"});
                 }
                 state_ = state::DECODE_SYMBOL;
                 break;
@@ -499,7 +499,7 @@ result_t<stream_result> lha_new_decompressor::decompress_some(
                         return stream_result::need_input(bytes_read(), bytes_written());
                     }
                     if (code < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Failed to decode symbol"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to decode symbol"});
                     }
 
                     block_remaining_--;
@@ -531,7 +531,7 @@ result_t<stream_result> lha_new_decompressor::decompress_some(
                     return stream_result::need_input(bytes_read(), bytes_written());
                 }
                 if (bits < 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Failed to decode offset"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to decode offset"});
                 }
 
                 if (bits == 0) {

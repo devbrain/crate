@@ -26,6 +26,14 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${NEUTRINO_CMAKE_DIR}")
 include(NeutrinoInit)
 
+# =============================================================================
+# C++ Standard
+# =============================================================================
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # ============================================================================
 # Options
 # ============================================================================
@@ -44,6 +52,10 @@ endif()
 # ============================================================================
 # Dependencies
 # ============================================================================
+
+# Fetch tl::expected (std::expected backport for C++20)
+include(${NEUTRINO_CMAKE_DIR}/deps/expected.cmake)
+neutrino_fetch_expected()
 
 # Fetch miniz sources (not as a library, we embed it directly)
 # SOURCE_SUBDIR points to non-existent directory to prevent add_subdirectory

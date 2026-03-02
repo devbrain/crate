@@ -111,21 +111,21 @@ namespace crate {
         archive->m_pimpl->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <arj_archive>> arj_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -135,13 +135,13 @@ namespace crate {
     result_t <byte_vector> arj_archive::extract(const file_entry& entry) {
         // Guard against zip bombs - reject unreasonably large allocations
         if (entry.uncompressed_size > MAX_EXTRACTION_SIZE) {
-            return std::unexpected(error{error_code::AllocationLimitExceeded,
+            return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
                 "Uncompressed size exceeds maximum allowed (" + std::to_string(entry.uncompressed_size) + " bytes)"});
         }
 
         vector_output_stream output(entry.uncompressed_size);
         auto result = extract_to(entry, output);
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
         return output.take();
     }
 
@@ -162,7 +162,7 @@ namespace crate {
 
         // Find the member by index
         if (entry.folder_index >= m_pimpl->members_.size()) {
-            return std::unexpected(error{error_code::FileNotInArchive});
+            return crate::make_unexpected(error{error_code::FileNotInArchive});
         }
 
         const auto& member = m_pimpl->members_[entry.folder_index];
@@ -172,7 +172,7 @@ namespace crate {
         }
 
         if (member.flags & arj::GARBLED) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::UnsupportedCompression,
                 "Encrypted ARJ files are not supported"
             });
@@ -180,7 +180,7 @@ namespace crate {
 
         // Get compressed data
         if (entry.folder_offset + member.compressed_size > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         byte_span compressed(m_pimpl->data_.data() + entry.folder_offset, member.compressed_size);
@@ -191,13 +191,13 @@ namespace crate {
         switch (member.method) {
             case arj::STORED: {
                 if (compressed.size() != member.original_size) {
-                    return std::unexpected(error{
+                    return crate::make_unexpected(error{
                         error_code::CorruptData,
                         "Stored data size mismatch"
                     });
                 }
                 auto write = crc_dest.write(compressed);
-                if (!write) return std::unexpected(write.error());
+                if (!write) return crate::make_unexpected(write.error());
                 written = compressed.size();
                 break;
             }
@@ -209,7 +209,7 @@ namespace crate {
                 lzh_format fmt = (member.min_version == 51) ? lzh_format::LH7 : lzh_format::LH6;
                 lzh_decompressor decompressor(fmt);
                 auto result = decompressor.decompress_stream(input, crc_dest, member.original_size);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 written = *result;
                 break;
             }
@@ -219,13 +219,13 @@ namespace crate {
                 bool old_format = (member.archiver_version == 1);
                 arj_method4_decompressor decompressor(old_format);
                 auto result = decompressor.decompress_stream(input, crc_dest, member.original_size);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 written = *result;
                 break;
             }
 
             default:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Unknown ARJ compression method"
                 });
@@ -233,7 +233,7 @@ namespace crate {
 
         // Verify CRC
         if (crc_dest.crc.finalize() != member.crc) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidChecksum,
                 "CRC mismatch"
             });
@@ -261,7 +261,7 @@ namespace crate {
 
         // Find and parse main header
         auto main_result = find_and_parse_main_header(pos);
-        if (!main_result) return std::unexpected(main_result.error());
+        if (!main_result) return crate::make_unexpected(main_result.error());
         pos = *main_result;
 
         // Parse member headers
@@ -271,7 +271,7 @@ namespace crate {
                 if (member_result.error().code() == error_code::TruncatedArchive) {
                     break; // End of archive
                 }
-                return std::unexpected(member_result.error());
+                return crate::make_unexpected(member_result.error());
             }
             pos = *member_result;
         }
@@ -283,7 +283,7 @@ namespace crate {
         // Check signature
         if (pos + 2 > m_pimpl->data_.size() ||
             std::memcmp(m_pimpl->data_.data() + pos, arj::SIGNATURE, 2) != 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidSignature,
                 "Not a valid ARJ file"
             });
@@ -292,13 +292,13 @@ namespace crate {
 
         // Read basic header size
         if (pos + 2 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
         u16 basic_header_size = read_u16_le(m_pimpl->data_.data() + pos);
         pos += 2;
 
         if (basic_header_size == 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidHeader,
                 "Invalid main header"
             });
@@ -306,14 +306,14 @@ namespace crate {
 
         if (basic_header_size < arj::MIN_HEADER_SIZE ||
             basic_header_size > arj::MAX_HEADER_SIZE) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidHeader,
                 "Invalid header size"
             });
         }
 
         if (pos + basic_header_size + 4 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Parse header contents
@@ -330,7 +330,7 @@ namespace crate {
         hdr_pos++; // reserved
 
         if (file_type != arj::MAIN_HEADER) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidHeader,
                 "Expected main header"
             });
@@ -382,7 +382,7 @@ namespace crate {
 
         // Skip extended headers
         auto ext_result = skip_extended_headers(pos);
-        if (!ext_result) return std::unexpected(ext_result.error());
+        if (!ext_result) return crate::make_unexpected(ext_result.error());
         pos = *ext_result;
 
         return pos;
@@ -391,10 +391,10 @@ namespace crate {
     result_t <size_t> arj_archive::parse_member(size_t pos) {
         // Check signature
         if (pos + 2 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
         if (std::memcmp(m_pimpl->data_.data() + pos, arj::SIGNATURE, 2) != 0) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidSignature,
                 "Invalid member signature"
             });
@@ -403,18 +403,18 @@ namespace crate {
 
         // Read basic header size
         if (pos + 2 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
         u16 basic_header_size = read_u16_le(m_pimpl->data_.data() + pos);
         pos += 2;
 
         // End of archive marker
         if (basic_header_size == 0) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         if (pos + basic_header_size + 4 > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Parse header contents
@@ -474,7 +474,7 @@ namespace crate {
 
         // Skip extended headers
         auto ext_result = skip_extended_headers(pos);
-        if (!ext_result) return std::unexpected(ext_result.error());
+        if (!ext_result) return crate::make_unexpected(ext_result.error());
         pos = *ext_result;
 
         // Calculate data position
@@ -509,7 +509,7 @@ namespace crate {
     result_t <size_t> arj_archive::skip_extended_headers(size_t pos) const {
         while (true) {
             if (pos + 2 > m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             u16 ext_size = read_u16_le(m_pimpl->data_.data() + pos);
@@ -518,7 +518,7 @@ namespace crate {
             if (ext_size == 0) break;
 
             if (pos + ext_size + 4 > m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             pos += ext_size + 4; // data + CRC

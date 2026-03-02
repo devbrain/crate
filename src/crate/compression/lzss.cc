@@ -224,7 +224,7 @@ result_t<stream_result> kwaj_lzss_decompressor::decompress_some(
                 u32 value = 0;
                 if (!try_read_bits(in_ptr, in_end, 8, value)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(
                         static_cast <size_t>(in_ptr - input.data()),
@@ -252,7 +252,7 @@ result_t<stream_result> kwaj_lzss_decompressor::decompress_some(
                 u32 len_bits = 0;
                 if (!try_read_bits(in_ptr, in_end, 4, len_bits)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(
                         static_cast <size_t>(in_ptr - input.data()),
@@ -268,7 +268,7 @@ result_t<stream_result> kwaj_lzss_decompressor::decompress_some(
                 u32 off_bits = 0;
                 if (!try_read_bits(in_ptr, in_end, 12, off_bits)) {
                     if (input_finished) {
-                        return std::unexpected(error{error_code::InputBufferUnderflow});
+                        return crate::make_unexpected(error{error_code::InputBufferUnderflow});
                     }
                     return stream_result::need_input(
                         static_cast <size_t>(in_ptr - input.data()),

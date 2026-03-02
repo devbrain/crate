@@ -37,7 +37,7 @@ result_t<stream_result> zstd_decompressor::decompress_some(
     [[maybe_unused]] bool input_finished
 ) {
     if (!pimpl_->ctx) {
-        return std::unexpected(error{error_code::CorruptData, "zstd context initialization failed"});
+        return crate::make_unexpected(error{error_code::CorruptData, "zstd context initialization failed"});
     }
 
     if (pimpl_->frame_complete) {
@@ -50,7 +50,7 @@ result_t<stream_result> zstd_decompressor::decompress_some(
     size_t ret = ZSTD_decompressStream(pimpl_->ctx, &out_buf, &in_buf);
 
     if (ZSTD_isError(ret)) {
-        return std::unexpected(error{error_code::CorruptData,
+        return crate::make_unexpected(error{error_code::CorruptData,
             std::string("zstd decompression failed: ") + ZSTD_getErrorName(ret)});
     }
 

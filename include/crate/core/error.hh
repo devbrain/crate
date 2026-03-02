@@ -1,8 +1,8 @@
 #pragma once
 
 #include <crate/crate_export.h>
+#include <crate/core/expected.hh>
 
-#include <expected>
 #include <string>
 #include <string_view>
 
@@ -72,7 +72,7 @@ namespace crate {
     };
 
     template<typename T>
-    using result_t = std::expected <T, error>;
+    using result_t = crate::expected<T, error>;
 
-    using void_result_t = std::expected <void, error>;
+    using void_result_t = crate::expected<void, error>;
 } // namespace crate

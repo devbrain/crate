@@ -41,7 +41,7 @@ namespace crate {
         szdd::header header{};
 
         if (data.size() < 14) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Check for standard SZDD signature
@@ -58,14 +58,14 @@ namespace crate {
             header.missing_char = '\0';
             header.uncompressed_size = read_u32_le(data.data() + 7);
         } else {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::InvalidSignature,
                 "Not a valid SZDD file"
             });
         }
 
         if (header.comp_method != 'A') {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::UnsupportedCompression,
                 "Only SZDD compression method 'A' is supported"
             });
@@ -109,7 +109,7 @@ namespace crate {
 
                         if (!is_qbasic_sig && !is_standard_sig) {
                             // Neither signature matches - invalid file
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::InvalidSignature,
                                 "Not a valid SZDD file"
                             });
@@ -136,7 +136,7 @@ namespace crate {
                             pimpl_->header.uncompressed_size = read_u32_le(header_span.data() + 10);
 
                             if (pimpl_->header.comp_method != 'A') {
-                                return std::unexpected(error{
+                                return crate::make_unexpected(error{
                                     error_code::UnsupportedCompression,
                                     "Only SZDD compression method 'A' is supported"
                                 });
@@ -153,12 +153,12 @@ namespace crate {
                     if (input_finished) {
                         // We need at least 8 bytes to check signatures
                         if (pimpl_->header_bytes < 8) {
-                            return std::unexpected(error{error_code::TruncatedArchive,
+                            return crate::make_unexpected(error{error_code::TruncatedArchive,
                                 "Incomplete SZDD header"});
                         }
                         // If we have a valid signature but not enough bytes, it's truncated
                         // (Invalid signature already handled above)
-                        return std::unexpected(error{error_code::TruncatedArchive,
+                        return crate::make_unexpected(error{error_code::TruncatedArchive,
                             "Incomplete SZDD header"});
                     }
 
@@ -176,7 +176,7 @@ namespace crate {
                         remaining_input, remaining_output, input_finished);
 
                     if (!result) {
-                        return std::unexpected(result.error());
+                        return crate::make_unexpected(result.error());
                     }
 
                     total_read += result->bytes_read;

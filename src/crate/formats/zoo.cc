@@ -61,21 +61,21 @@ namespace crate {
         archive->m_pimpl->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <zoo_archive>> zoo_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -85,7 +85,7 @@ namespace crate {
     result_t <byte_vector> zoo_archive::extract(const file_entry& entry) {
         vector_output_stream output(entry.uncompressed_size);
         auto result = extract_to(entry, output);
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
         return output.take();
     }
 
@@ -105,12 +105,12 @@ namespace crate {
         };
 
         if (entry.folder_index >= m_pimpl->members_.size()) {
-            return std::unexpected(error{error_code::FileNotInArchive});
+            return crate::make_unexpected(error{error_code::FileNotInArchive});
         }
 
         const auto& member = m_pimpl->members_[entry.folder_index];
         if (member.offset + member.compressed_size > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         byte_span compressed(m_pimpl->data_.data() + member.offset, member.compressed_size);
@@ -121,7 +121,7 @@ namespace crate {
         switch (member.method) {
             case zoo::STORED: {
                 auto write = crc_dest.write(compressed);
-                if (!write) return std::unexpected(write.error());
+                if (!write) return crate::make_unexpected(write.error());
                 written = compressed.size();
                 break;
             }
@@ -130,7 +130,7 @@ namespace crate {
                 zoo_lzw_decompressor decomp;
                 decomp.set_expected_output_size(member.original_size);
                 auto result = decomp.decompress_stream(input, crc_dest, member.original_size);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 written = *result;
                 break;
             }
@@ -138,13 +138,13 @@ namespace crate {
             case zoo::LH5: {
                 lzh_decompressor decomp(lzh_format::LH5);
                 auto result = decomp.decompress_stream(input, crc_dest, member.original_size);
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 written = *result;
                 break;
             }
 
             default:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Unsupported ZOO compression method"
                 });
@@ -152,7 +152,7 @@ namespace crate {
 
         // Verify CRC (using CRC-16-IBM)
         if (crc_dest.crc.finalize() != member.crc16) {
-            return std::unexpected(error{error_code::InvalidChecksum, "CRC-16 mismatch"});
+            return crate::make_unexpected(error{error_code::InvalidChecksum, "CRC-16 mismatch"});
         }
 
         // Report byte-level progress
@@ -166,13 +166,13 @@ namespace crate {
     void_result_t zoo_archive::parse() {
         // Check minimum size for header
         if (m_pimpl->data_.size() < zoo::HEADER_SIZE) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Check signature "ZOO 2.10 Archive."
         const char* expected = "ZOO 2.10 Archive.";
         if (std::memcmp(m_pimpl->data_.data(), expected, 17) != 0) {
-            return std::unexpected(error{error_code::InvalidSignature, "Not a ZOO archive"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Not a ZOO archive"});
         }
 
         // Read header
@@ -180,7 +180,7 @@ namespace crate {
 
         u32 tag = read_u32_le(m_pimpl->data_.data() + pos);
         if (tag != zoo::ZOO_TAG) {
-            return std::unexpected(error{error_code::InvalidSignature, "Invalid ZOO tag"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Invalid ZOO tag"});
         }
         pos += 4;
 

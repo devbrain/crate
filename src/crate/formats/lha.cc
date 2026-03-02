@@ -222,7 +222,7 @@ namespace lha {
                 while (block_remaining_ == 0) {
                     if (!start_new_block(reader)) {
                         if (output.size() >= output_size) break;
-                        return std::unexpected(error{error_code::CorruptData, "Failed to read LHA block"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LHA block"});
                     }
                 }
 
@@ -232,7 +232,7 @@ namespace lha {
                 // Read code
                 int code = code_tree_.read(reader);
                 if (code < 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Failed to read LHA code"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LHA code"});
                 }
 
                 if (code < 256) {
@@ -245,12 +245,12 @@ namespace lha {
 
                     int offset = read_offset(reader);
                     if (offset < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Failed to read LHA offset"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LHA offset"});
                     }
 
                     // Validate offset is within ring buffer bounds
                     if (static_cast<size_t>(offset) >= RING_SIZE) {
-                        return std::unexpected(error{error_code::CorruptData, "LHA offset exceeds ring buffer size"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "LHA offset exceeds ring buffer size"});
                     }
 
                     size_t start = (ringbuf_pos_ + RING_SIZE - static_cast <size_t>(offset) - 1) % RING_SIZE;
@@ -605,7 +605,7 @@ namespace lha {
                 int code = read_code(reader);
                 if (code < 0) {
                     if (output.size() >= output_size) break;
-                    return std::unexpected(error{error_code::CorruptData, "Failed to read LH1 code"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LH1 code"});
                 }
 
                 if (code < 256) {
@@ -615,7 +615,7 @@ namespace lha {
                     // Copy from history
                     int offset = read_offset(reader);
                     if (offset < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Failed to read LH1 offset"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LH1 offset"});
                     }
 
                     unsigned count = static_cast <unsigned>(code - 256);
@@ -974,7 +974,7 @@ namespace lha {
                 while (block_remaining_ == 0) {
                     if (!start_new_block(reader)) {
                         if (output.size() >= output_size) break;
-                        return std::unexpected(error{error_code::CorruptData, "Failed to read LK7 block"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LK7 block"});
                     }
                 }
 
@@ -984,7 +984,7 @@ namespace lha {
                 // Read code
                 int code = code_tree_.read(reader);
                 if (code < 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Failed to read LK7 code"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LK7 code"});
                 }
 
                 if (code < 256) {
@@ -994,17 +994,17 @@ namespace lha {
                     // Copy from history - LHark uses different copy count encoding
                     int copy_count = decode_copy_count(reader, code);
                     if (copy_count < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Failed to decode LK7 copy count"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to decode LK7 copy count"});
                     }
 
                     int offset = read_offset(reader);
                     if (offset < 0) {
-                        return std::unexpected(error{error_code::CorruptData, "Failed to read LK7 offset"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Failed to read LK7 offset"});
                     }
 
                     // Validate offset is within ring buffer bounds
                     if (static_cast<size_t>(offset) >= RING_SIZE) {
-                        return std::unexpected(error{error_code::CorruptData, "LK7 offset exceeds ring buffer size"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "LK7 offset exceeds ring buffer size"});
                     }
 
                     size_t start = (ringbuf_pos_ + RING_SIZE - static_cast <size_t>(offset) - 1) % RING_SIZE;
@@ -1249,21 +1249,21 @@ result_t<std::unique_ptr<lha_archive>> lha_archive::open(byte_span data) {
     archive->m_pimpl->data_.assign(data.begin(), data.end());
 
     auto result = archive->parse();
-    if (!result) return std::unexpected(result.error());
+    if (!result) return crate::make_unexpected(result.error());
 
     return archive;
 }
 
 result_t<std::unique_ptr<lha_archive>> lha_archive::open(const std::filesystem::path& path) {
     auto file = file_input_stream::open(path);
-    if (!file) return std::unexpected(file.error());
+    if (!file) return crate::make_unexpected(file.error());
 
     auto size = file->size();
-    if (!size) return std::unexpected(size.error());
+    if (!size) return crate::make_unexpected(size.error());
 
     byte_vector data(*size);
     auto read = file->read(data);
-    if (!read) return std::unexpected(read.error());
+    if (!read) return crate::make_unexpected(read.error());
 
     return open(data);
 }
@@ -1272,7 +1272,7 @@ const std::vector<file_entry>& lha_archive::files() const { return m_pimpl->file
 
 result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
     if (entry.folder_index >= m_pimpl->members_.size()) {
-        return std::unexpected(error{error_code::FileNotInArchive});
+        return crate::make_unexpected(error{error_code::FileNotInArchive});
     }
 
     const auto& member = m_pimpl->members_[entry.folder_index];
@@ -1283,12 +1283,12 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
 
     // Guard against zip bombs - reject unreasonably large allocations
     if (member.original_size > MAX_EXTRACTION_SIZE) {
-        return std::unexpected(error{error_code::AllocationLimitExceeded,
+        return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
             "Uncompressed size exceeds maximum allowed (" + std::to_string(member.original_size) + " bytes)"});
     }
 
     if (entry.folder_offset + member.compressed_size > m_pimpl->data_.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     byte_span compressed(m_pimpl->data_.data() + entry.folder_offset, member.compressed_size);
@@ -1309,7 +1309,7 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
         byte_vector result(member.original_size);
         auto r = decoder.decompress_some(compressed, result, true);
         if (!r) {
-            return std::unexpected(r.error());
+            return crate::make_unexpected(r.error());
         }
         result.resize(r->bytes_written);
         output = std::move(result);
@@ -1320,7 +1320,7 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
         byte_vector result(member.original_size);
         auto r = decoder.decompress_some(compressed, result, true);
         if (!r) {
-            return std::unexpected(r.error());
+            return crate::make_unexpected(r.error());
         }
         result.resize(r->bytes_written);
         output = std::move(result);
@@ -1336,7 +1336,7 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
             byte_vector result(member.original_size);
             auto r = decoder.decompress_some(compressed, result, true);
             if (!r) {
-                return std::unexpected(r.error());
+                return crate::make_unexpected(r.error());
             }
             result.resize(r->bytes_written);
             output = std::move(result);
@@ -1353,7 +1353,7 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
         output = decoder.decompress(compressed, member.original_size);
     }
     else {
-        return std::unexpected(error{error_code::UnsupportedCompression,
+        return crate::make_unexpected(error{error_code::UnsupportedCompression,
             std::string("Unsupported LHA method: ") + member.method});
     }
 
@@ -1362,7 +1362,7 @@ result_t<byte_vector> lha_archive::extract(const file_entry& entry) {
     // Verify CRC-16
     u16 calc_crc = lha::crc_16::calculate(*output);
     if (calc_crc != member.crc) {
-        return std::unexpected(error{error_code::InvalidChecksum, "LHA CRC-16 mismatch"});
+        return crate::make_unexpected(error{error_code::InvalidChecksum, "LHA CRC-16 mismatch"});
     }
 
     // Report byte-level progress
@@ -1383,7 +1383,7 @@ void_result_t lha_archive::parse() {
             if (header_result.error().code() == error_code::InvalidSignature) {
                 break;  // End of archive
             }
-            return std::unexpected(header_result.error());
+            return crate::make_unexpected(header_result.error());
         }
 
         const auto& [header, data_offset, next_pos] = *header_result;
@@ -1408,12 +1408,12 @@ void_result_t lha_archive::parse() {
 
 result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_header(size_t pos) {
     if (pos + 22 > data_.size()) {
-        return std::unexpected(error{error_code::InvalidSignature});
+        return crate::make_unexpected(error{error_code::InvalidSignature});
     }
 
     // Check for end marker
     if (data_[pos] == 0) {
-        return std::unexpected(error{error_code::InvalidSignature});
+        return crate::make_unexpected(error{error_code::InvalidSignature});
     }
 
     // Detect header level (at offset 20)
@@ -1428,7 +1428,7 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
         case 3:
             return parse_level3_header(pos);
         default:
-            return std::unexpected(error{error_code::InvalidSignature, "Unknown LHA header level"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Unknown LHA header level"});
     }
 }
 
@@ -1439,7 +1439,7 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
     // Read full header
     size_t total_header_len = header_len + 2;
     if (pos + total_header_len > data_.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     // Verify checksum (sum of bytes from offset 2)
@@ -1448,7 +1448,7 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
         calc_sum += data_[pos + i];
     }
     if (calc_sum != checksum) {
-        return std::unexpected(error{error_code::InvalidChecksum, "LHA header checksum mismatch"});
+        return crate::make_unexpected(error{error_code::InvalidChecksum, "LHA header checksum mismatch"});
     }
 
     lha::file_header header;
@@ -1468,7 +1468,7 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
     // Path length
     u8 path_len = data_[pos + 21];
     if (22 + path_len > header_len) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     // Read filename
@@ -1537,7 +1537,7 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
     u16 header_len = read_u16(pos);
 
     if (header_len < 26 || pos + header_len > data_.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     lha::file_header header;
@@ -1567,7 +1567,7 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
     if (header.os_type == 'K') {  // OS-9/68k
         actual_header_len += 2;
         if (pos + actual_header_len > data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
     }
 
@@ -1582,17 +1582,17 @@ result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_
 
 result_t<std::tuple<lha::file_header, size_t, size_t>> lha_archive::impl::parse_level3_header(size_t pos) {
     if (pos + 32 > data_.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     u16 word_size = read_u16(pos);
     if (word_size != 4) {
-        return std::unexpected(error{error_code::InvalidSignature, "Unsupported LHA level 3 word size"});
+        return crate::make_unexpected(error{error_code::InvalidSignature, "Unsupported LHA level 3 word size"});
     }
 
     u32 header_len = read_u32(pos + 24);
     if (header_len < 32 || pos + header_len > data_.size()) {
-        return std::unexpected(error{error_code::TruncatedArchive});
+        return crate::make_unexpected(error{error_code::TruncatedArchive});
     }
 
     lha::file_header header;

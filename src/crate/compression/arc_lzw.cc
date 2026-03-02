@@ -50,7 +50,7 @@ result_t<stream_result> arc_lzw_decompressor::decompress_some(
     bool input_finished
 ) {
     if (!expected_output_set()) {
-        return std::unexpected(error{
+        return crate::make_unexpected(error{
             error_code::InvalidParameter,
             "Expected size required for bounded decompression"
         });
@@ -193,7 +193,7 @@ result_t<stream_result> arc_lzw_decompressor::decompress_some(
                 int safety = 0;
                 while (code_ >= 256 && safety < MAX_CODE) {
                     if (code_ < 0 || code_ > MAX_CODE) {
-                        return std::unexpected(error{error_code::CorruptData, "Invalid LZW code"});
+                        return crate::make_unexpected(error{error_code::CorruptData, "Invalid LZW code"});
                     }
                     stack_.push_back(suffix_[static_cast<size_t>(code_)]);
                     code_ = prefix_[static_cast<size_t>(code_)];
@@ -201,7 +201,7 @@ result_t<stream_result> arc_lzw_decompressor::decompress_some(
                 }
 
                 if (safety >= MAX_CODE) {
-                    return std::unexpected(error{error_code::CorruptData, "LZW decode loop"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "LZW decode loop"});
                 }
 
                 finchar_ = static_cast<u8>(code_);

@@ -331,7 +331,7 @@ namespace crate {
                         while (header_pos_ < header_.size()) {
                             if (in_ptr >= in_end) {
                                 if (input_finished) {
-                                    return std::unexpected(error{
+                                    return crate::make_unexpected(error{
                                         error_code::InputBufferUnderflow,
                                         "PKWARE: input too short"
                                     });
@@ -347,14 +347,14 @@ namespace crate {
                         extra_bits_ = 0;
 
                         if (dsize_bits_ < 4 || dsize_bits_ > 6) {
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::CorruptData,
                                 "PKWARE: invalid dictionary size"
                             });
                         }
 
                         if (ctype_ != CMP_BINARY && ctype_ != CMP_ASCII) {
-                            return std::unexpected(error{
+                            return crate::make_unexpected(error{
                                 error_code::CorruptData,
                                 "PKWARE: invalid compression type"
                             });

@@ -298,7 +298,7 @@ result_t<stream_result> stuffit_arsenic_decompressor::decompress_some(
             case state::READ_HEADER_A: {
                 header_char_ = decode_bit_string(initial_model_, 8);
                 if (header_char_ != 'A') {
-                    return std::unexpected(error{error_code::CorruptData, "Invalid Arsenic header (expected 'A')"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid Arsenic header (expected 'A')"});
                 }
                 state_ = state::READ_HEADER_S;
                 break;
@@ -307,7 +307,7 @@ result_t<stream_result> stuffit_arsenic_decompressor::decompress_some(
             case state::READ_HEADER_S: {
                 header_char_ = decode_bit_string(initial_model_, 8);
                 if (header_char_ != 's') {
-                    return std::unexpected(error{error_code::CorruptData, "Invalid Arsenic header (expected 's')"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid Arsenic header (expected 's')"});
                 }
                 state_ = state::READ_BLOCK_BITS;
                 break;
@@ -402,7 +402,7 @@ result_t<stream_result> stuffit_arsenic_decompressor::decompress_some(
                 }
 
                 if (transform_index_ >= num_bytes_ && num_bytes_ > 0) {
-                    return std::unexpected(error{error_code::CorruptData, "Invalid transform index"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Invalid transform index"});
                 }
 
                 // Reset models for next block

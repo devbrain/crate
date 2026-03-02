@@ -368,7 +368,7 @@ struct rnc_decompressor::impl {
                               header_buf_[3];
 
                     if ((sig >> 8) != rnc::SIGNATURE) {
-                        return std::unexpected(error{
+                        return crate::make_unexpected(error{
                             error_code::InvalidSignature,
                             "Not a valid RNC file"
                         });
@@ -376,7 +376,7 @@ struct rnc_decompressor::impl {
 
                     method_ = static_cast<u8>(sig & 0xFF);
                     if (method_ > 2) {
-                        return std::unexpected(error(
+                        return crate::make_unexpected(error(
                             error_code::UnsupportedCompression,
                             "Unsupported RNC method"
                         ));
@@ -435,7 +435,7 @@ struct rnc_decompressor::impl {
                 }
 
                 if (key_required_) {
-                    return std::unexpected(error(
+                    return crate::make_unexpected(error(
                         error_code::PasswordRequired,
                         "RNC file is encrypted (key required)"
                     ));
@@ -499,7 +499,7 @@ struct rnc_decompressor::impl {
                 {
                     int val = m1_decode_symbol(raw_table_);
                     if (val < 0) {
-                        return std::unexpected(error(
+                        return crate::make_unexpected(error(
                             error_code::CorruptData,
                             "RNC: Invalid Huffman code in raw table"
                         ));
@@ -555,7 +555,7 @@ struct rnc_decompressor::impl {
                 {
                     int val = m1_decode_symbol(len_table_);
                     if (val < 0) {
-                        return std::unexpected(error(
+                        return crate::make_unexpected(error(
                             error_code::CorruptData,
                             "RNC: Invalid Huffman code in length table"
                         ));
@@ -569,7 +569,7 @@ struct rnc_decompressor::impl {
                 {
                     int val = m1_decode_symbol(pos_table_);
                     if (val < 0) {
-                        return std::unexpected(error(
+                        return crate::make_unexpected(error(
                             error_code::CorruptData,
                             "RNC: Invalid Huffman code in position table"
                         ));
@@ -779,7 +779,7 @@ struct rnc_decompressor::impl {
 
         // Verify unpacked CRC
         if (computed_crc_ != unpacked_crc_) {
-            return std::unexpected(error(
+            return crate::make_unexpected(error(
                 error_code::InvalidChecksum,
                 "RNC unpacked CRC mismatch"
             ));
@@ -803,7 +803,7 @@ struct rnc_decompressor::impl {
 
     need_input:
         if (input_finished) {
-            return std::unexpected(error{
+            return crate::make_unexpected(error{
                 error_code::TruncatedArchive,
                 "Unexpected end of RNC data"
             });

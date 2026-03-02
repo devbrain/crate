@@ -226,7 +226,7 @@ namespace crate {
                             record_literal();
 
                             auto byte_result = decode_character();
-                            if (!byte_result) return std::unexpected(byte_result.error());
+                            if (!byte_result) return crate::make_unexpected(byte_result.error());
 
                             u8 byte = *byte_result;
                             output.push_back(byte);
@@ -247,11 +247,11 @@ namespace crate {
                             }
 
                             auto pos_result = decode_position();
-                            if (!pos_result) return std::unexpected(pos_result.error());
+                            if (!pos_result) return crate::make_unexpected(pos_result.error());
                             u16 position = *pos_result;
 
                             auto len_result = decode_length();
-                            if (!len_result) return std::unexpected(len_result.error());
+                            if (!len_result) return crate::make_unexpected(len_result.error());
                             u16 length = *len_result;
 
                             // Copy from window
@@ -562,13 +562,13 @@ namespace crate {
                         while (true) {
                             if (ctx_id == NULL_PTR) {
                                 auto r = decode_uniform();
-                                if (!r) return std::unexpected(r.error());
+                                if (!r) return crate::make_unexpected(r.error());
                                 decoded = *r;
                                 break;
                             }
 
                             auto r = decode_from_context(ctx_id);
-                            if (!r) return std::unexpected(r.error());
+                            if (!r) return crate::make_unexpected(r.error());
 
                             if (*r != ESCAPE_SYMBOL) {
                                 promote_to_front(ctx_id);
@@ -1207,21 +1207,21 @@ namespace crate {
         archive->m_pimpl->data_.assign(data.begin(), data.end());
 
         auto result = archive->parse();
-        if (!result) return std::unexpected(result.error());
+        if (!result) return crate::make_unexpected(result.error());
 
         return archive;
     }
 
     result_t <std::unique_ptr <ha_archive>> ha_archive::open(const std::filesystem::path& path) {
         auto file = file_input_stream::open(path);
-        if (!file) return std::unexpected(file.error());
+        if (!file) return crate::make_unexpected(file.error());
 
         auto size = file->size();
-        if (!size) return std::unexpected(size.error());
+        if (!size) return crate::make_unexpected(size.error());
 
         byte_vector data(*size);
         auto read = file->read(data);
-        if (!read) return std::unexpected(read.error());
+        if (!read) return crate::make_unexpected(read.error());
 
         return open(data);
     }
@@ -1230,12 +1230,12 @@ namespace crate {
 
     result_t <byte_vector> ha_archive::extract(const file_entry& entry) {
         if (entry.folder_index >= m_pimpl->members_.size()) {
-            return std::unexpected(error{error_code::FileNotInArchive});
+            return crate::make_unexpected(error{error_code::FileNotInArchive});
         }
 
         const auto& member = m_pimpl->members_[entry.folder_index];
         if (entry.folder_offset + member.compressed_size > m_pimpl->data_.size()) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         byte_span compressed(m_pimpl->data_.data() + entry.folder_offset, member.compressed_size);
@@ -1258,9 +1258,9 @@ namespace crate {
                     mutable_byte_span(output.data(), output.size()),
                     true
                 );
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != member.original_size) {
-                    return std::unexpected(error{error_code::CorruptData, "Incomplete decompression"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Incomplete decompression"});
                 }
                 break;
             }
@@ -1273,9 +1273,9 @@ namespace crate {
                     mutable_byte_span(output.data(), output.size()),
                     true
                 );
-                if (!result) return std::unexpected(result.error());
+                if (!result) return crate::make_unexpected(result.error());
                 if (result->bytes_written != member.original_size) {
-                    return std::unexpected(error{error_code::CorruptData, "Incomplete decompression"});
+                    return crate::make_unexpected(error{error_code::CorruptData, "Incomplete decompression"});
                 }
                 break;
             }
@@ -1285,7 +1285,7 @@ namespace crate {
                 return byte_vector{};
 
             default:
-                return std::unexpected(error{
+                return crate::make_unexpected(error{
                     error_code::UnsupportedCompression,
                     "Unsupported HA compression method"
                 });
@@ -1294,7 +1294,7 @@ namespace crate {
         // Verify CRC-32
         u32 calc_crc = eval_crc_32(output);
         if (calc_crc != member.crc32) {
-            return std::unexpected(error{error_code::InvalidChecksum, "CRC-32 mismatch"});
+            return crate::make_unexpected(error{error_code::InvalidChecksum, "CRC-32 mismatch"});
         }
 
         // Report byte-level progress
@@ -1307,12 +1307,12 @@ namespace crate {
 
     void_result_t ha_archive::parse() {
         if (m_pimpl->data_.size() < 4) {
-            return std::unexpected(error{error_code::TruncatedArchive});
+            return crate::make_unexpected(error{error_code::TruncatedArchive});
         }
 
         // Check magic
         if (m_pimpl->data_[0] != ha::MAGIC[0] || m_pimpl->data_[1] != ha::MAGIC[1]) {
-            return std::unexpected(error{error_code::InvalidSignature, "Not a HA archive"});
+            return crate::make_unexpected(error{error_code::InvalidSignature, "Not a HA archive"});
         }
 
         // Read file count
@@ -1322,7 +1322,7 @@ namespace crate {
 
         for (u16 i = 0; i < file_count && pos < m_pimpl->data_.size(); i++) {
             if (pos >= m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             // Read version/method byte
@@ -1331,7 +1331,7 @@ namespace crate {
             u8 method = ver_type & 0x0F;
 
             if (pos + 16 > m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
 
             ha::FileHeader member;
@@ -1364,7 +1364,7 @@ namespace crate {
 
             // Read machine info length and skip it
             if (pos >= m_pimpl->data_.size()) {
-                return std::unexpected(error{error_code::TruncatedArchive});
+                return crate::make_unexpected(error{error_code::TruncatedArchive});
             }
             u8 machine_info_len = m_pimpl->data_[pos++];
             pos += machine_info_len;
