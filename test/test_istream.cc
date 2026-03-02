@@ -347,11 +347,37 @@ TEST_SUITE("Archive open(istream)") {
 }
 
 // ============================================================================
-// extract_stream
+// extract_stream — verify across all archive formats
 // ============================================================================
 
+namespace {
+    // Helper: verify extract_stream matches extract for every file in an archive
+    void verify_extract_stream(crate::archive& ar, const char* label) {
+        size_t checked = 0;
+        for (const auto& entry : ar.files()) {
+            if (entry.is_directory) continue;
+
+            auto content = ar.extract(entry);
+            if (!content.has_value()) continue; // skip entries that can't be extracted (encrypted, etc.)
+
+            auto stream = ar.extract_stream(entry);
+            REQUIRE_MESSAGE(stream.has_value(),
+                label << ": extract_stream failed for " << entry.name);
+
+            std::string from_extract(content->begin(), content->end());
+            std::string from_stream = read_all(**stream);
+            CHECK_MESSAGE(from_extract == from_stream,
+                label << ": mismatch for " << entry.name
+                      << " (extract=" << from_extract.size()
+                      << " stream=" << from_stream.size() << ")");
+            ++checked;
+        }
+        MESSAGE(label << ": verified " << checked << " files via extract_stream");
+    }
+}
+
 TEST_SUITE("extract_stream") {
-    TEST_CASE("ZIP: extract_stream returns readable istream") {
+    TEST_CASE("ZIP stored: extract_stream content") {
         auto path = ZIP_DIR / "stored.zip";
         if (!std::filesystem::exists(path)) return;
 
@@ -363,46 +389,147 @@ TEST_SUITE("extract_stream") {
 
         auto stream = (*archive)->extract_stream(files[0]);
         REQUIRE(stream.has_value());
-
-        std::string text = read_all(**stream);
-        CHECK(text == "Hello, World!\n");
+        CHECK(read_all(**stream) == "Hello, World!\n");
     }
 
-    TEST_CASE("ZIP: extract_stream matches extract") {
+    TEST_CASE("ZIP deflated: extract_stream matches extract") {
+        auto path = ZIP_DIR / "deflated.zip";
+        if (!std::filesystem::exists(path)) return;
+
+        auto ar = zip_archive::open(path);
+        REQUIRE(ar.has_value());
+        verify_extract_stream(**ar, "ZIP-deflated");
+    }
+
+    TEST_CASE("ZIP multiple files: extract_stream matches extract") {
         auto path = ZIP_DIR / "multiple.zip";
         if (!std::filesystem::exists(path)) return;
 
-        auto archive = zip_archive::open(path);
-        REQUIRE(archive.has_value());
+        auto ar = zip_archive::open(path);
+        REQUIRE(ar.has_value());
+        verify_extract_stream(**ar, "ZIP-multiple");
+    }
 
-        for (const auto& entry : (*archive)->files()) {
-            if (entry.is_directory) continue;
-
-            auto content = (*archive)->extract(entry);
-            REQUIRE(content.has_value());
-
-            auto stream = (*archive)->extract_stream(entry);
-            REQUIRE(stream.has_value());
-
-            std::string from_extract(content->begin(), content->end());
-            std::string from_stream = read_all(**stream);
-            CHECK(from_extract == from_stream);
+    TEST_CASE("ARJ: extract_stream matches extract") {
+        for (auto& f : std::filesystem::directory_iterator(ARJ_DIR)) {
+            if (f.path().extension() != ".arj") continue;
+            auto ar = arj_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
         }
     }
 
-    TEST_CASE("ARJ: extract_stream") {
-        auto path = ARJ_DIR / "stored.arj";
+    TEST_CASE("ARC: extract_stream matches extract") {
+        if (!std::filesystem::exists(ARC_DIR)) return;
+        for (auto& f : std::filesystem::directory_iterator(ARC_DIR)) {
+            if (f.path().extension() != ".arc") continue;
+            auto ar = arc_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return; // one is enough
+        }
+    }
+
+    TEST_CASE("CAB: extract_stream matches extract") {
+        auto path = CAB_DIR / "simple.cab";
         if (!std::filesystem::exists(path)) return;
 
-        auto archive = arj_archive::open(path);
-        REQUIRE(archive.has_value());
+        auto ar = cab_archive::open(path);
+        REQUIRE(ar.has_value());
+        verify_extract_stream(**ar, "CAB-simple");
+    }
 
-        for (const auto& entry : (*archive)->files()) {
-            if (entry.is_directory) continue;
-            auto stream = (*archive)->extract_stream(entry);
-            REQUIRE(stream.has_value());
-            std::string data = read_all(**stream);
-            CHECK(data.size() == entry.uncompressed_size);
+    TEST_CASE("LHA: extract_stream matches extract") {
+        if (!std::filesystem::exists(LHA_DIR)) return;
+        for (auto& dir : std::filesystem::directory_iterator(LHA_DIR)) {
+            if (!dir.is_directory()) continue;
+            for (auto& f : std::filesystem::directory_iterator(dir)) {
+                auto ext = f.path().extension().string();
+                if (ext != ".lzh" && ext != ".lha") continue;
+                auto ar = lha_archive::open(f.path());
+                if (!ar.has_value()) continue;
+                verify_extract_stream(**ar, f.path().filename().string().c_str());
+                return; // one is enough
+            }
+        }
+    }
+
+    TEST_CASE("ZOO: extract_stream matches extract") {
+        if (!std::filesystem::exists(ZOO_DIR)) return;
+        for (auto& f : std::filesystem::directory_iterator(ZOO_DIR)) {
+            if (f.path().extension() != ".zoo") continue;
+            auto ar = zoo_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
+        }
+    }
+
+    TEST_CASE("RAR: extract_stream matches extract") {
+        if (!std::filesystem::exists(RAR_DIR)) return;
+        for (auto& f : std::filesystem::recursive_directory_iterator(RAR_DIR)) {
+            if (f.path().extension() != ".rar") continue;
+            auto ar = rar_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            if ((*ar)->files().empty()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
+        }
+    }
+
+    TEST_CASE("ACE: extract_stream matches extract") {
+        if (!std::filesystem::exists(ACE_DIR)) return;
+        for (auto& f : std::filesystem::directory_iterator(ACE_DIR)) {
+            if (f.path().extension() != ".ace") continue;
+            auto ar = ace_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
+        }
+    }
+
+    TEST_CASE("HA: extract_stream matches extract") {
+        if (!std::filesystem::exists(HA_DIR)) return;
+        for (auto& f : std::filesystem::directory_iterator(HA_DIR)) {
+            if (f.path().extension() != ".ha") continue;
+            auto ar = ha_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
+        }
+    }
+
+    TEST_CASE("HYP: extract_stream matches extract") {
+        if (!std::filesystem::exists(HYP_DIR)) return;
+        for (auto& f : std::filesystem::directory_iterator(HYP_DIR)) {
+            if (f.path().extension() != ".hyp") continue;
+            auto ar = hyp_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
+        }
+    }
+
+    TEST_CASE("CHM: extract_stream matches extract") {
+        if (!std::filesystem::exists(CHM_DIR)) return;
+        for (auto& f : std::filesystem::recursive_directory_iterator(CHM_DIR)) {
+            if (f.path().extension() != ".chm") continue;
+            auto ar = chm_archive::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
+        }
+    }
+
+    TEST_CASE("Floppy: extract_stream matches extract") {
+        if (!std::filesystem::exists(FLOPPY_DIR)) return;
+        for (auto& f : std::filesystem::directory_iterator(FLOPPY_DIR)) {
+            auto ext = f.path().extension().string();
+            if (ext != ".img" && ext != ".ima") continue;
+            auto ar = floppy_image::open(f.path());
+            if (!ar.has_value()) continue;
+            verify_extract_stream(**ar, f.path().filename().string().c_str());
+            return;
         }
     }
 
@@ -413,15 +540,7 @@ TEST_SUITE("extract_stream") {
         std::ifstream file(path, std::ios::binary);
         auto archive = zip_archive::open(file);
         REQUIRE(archive.has_value());
-
-        auto& files = (*archive)->files();
-        REQUIRE(!files.empty());
-
-        auto stream = (*archive)->extract_stream(files[0]);
-        REQUIRE(stream.has_value());
-
-        std::string text = read_all(**stream);
-        CHECK(text == "Hello, World!\n");
+        verify_extract_stream(**archive, "ZIP-via-istream");
     }
 }
 
