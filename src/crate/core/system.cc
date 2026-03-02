@@ -15,8 +15,9 @@ result_t<byte_vector> read_stream(std::istream& is) {
             buf.reserve(static_cast<size_t>(end - start));
         }
         is.seekg(start);
-        is.clear(); // clear any eofbit/failbit from seekg
     }
+    // Clear any failbit/eofbit set by tellg/seekg (e.g. on non-seekable streams)
+    is.clear();
 
     std::array<char, 64 * 1024> tmp{};
     while (is.read(tmp.data(), static_cast<std::streamsize>(tmp.size())) || is.gcount() > 0) {
