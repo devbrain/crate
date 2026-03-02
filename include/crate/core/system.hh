@@ -184,4 +184,51 @@ namespace crate {
     // Read an entire std::istream into a byte_vector
     CRATE_EXPORT result_t<byte_vector> read_stream(std::istream& is);
 
+    // std::streambuf backed by a byte_vector (owns the data)
+    class CRATE_EXPORT byte_vector_istreambuf : public std::streambuf {
+    public:
+        explicit byte_vector_istreambuf(byte_vector data)
+            : data_(std::move(data)) {
+            auto* p = reinterpret_cast<char*>(data_.data());
+            setg(p, p, p + data_.size());
+        }
+
+    protected:
+        pos_type seekoff(off_type off, std::ios_base::seekdir dir,
+                         std::ios_base::openmode /*which*/) override {
+            auto* begin = reinterpret_cast<char*>(data_.data());
+            auto* end = begin + static_cast<std::ptrdiff_t>(data_.size());
+            char* cur;
+            switch (dir) {
+                case std::ios_base::beg: cur = begin + off; break;
+                case std::ios_base::cur: cur = gptr() + off; break;
+                case std::ios_base::end: cur = end + off; break;
+                default: return pos_type(off_type(-1));
+            }
+            if (cur < begin || cur > end) return pos_type(off_type(-1));
+            setg(begin, cur, end);
+            return pos_type(cur - begin);
+        }
+
+        pos_type seekpos(pos_type pos, std::ios_base::openmode mode) override {
+            return seekoff(off_type(pos), std::ios_base::beg, mode);
+        }
+
+    private:
+        byte_vector data_;
+    };
+
+    // std::istream that owns a byte_vector
+    class CRATE_EXPORT byte_vector_istream : public std::istream {
+    public:
+        explicit byte_vector_istream(byte_vector data)
+            : std::istream(nullptr)
+            , buf_(std::move(data)) {
+            rdbuf(&buf_);
+        }
+
+    private:
+        byte_vector_istreambuf buf_;
+    };
+
 } // namespace crate

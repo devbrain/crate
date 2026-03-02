@@ -53,6 +53,12 @@ namespace crate {
             virtual void_result_t extract(const file_entry& entry,
                                           const std::filesystem::path& dest);
 
+            // Extract a file as a readable stream
+            // Default implementation calls extract() and wraps the result in a byte_vector_istream.
+            // Subclasses may override to decompress on-demand without buffering the full file.
+            [[nodiscard]] virtual result_t<std::unique_ptr<std::istream>>
+            extract_stream(const file_entry& entry);
+
             // Extract all files (default implementation)
             virtual void_result_t extract_all(const std::filesystem::path& dest_dir);
 

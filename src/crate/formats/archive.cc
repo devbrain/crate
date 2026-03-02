@@ -24,6 +24,13 @@ namespace crate {
         return data->size();
     }
 
+    result_t<std::unique_ptr<std::istream>>
+    archive::extract_stream(const file_entry& entry) {
+        auto data = extract(entry);
+        if (!data) return crate::make_unexpected(data.error());
+        return std::make_unique<byte_vector_istream>(std::move(*data));
+    }
+
     void_result_t archive::extract(const file_entry& entry, const std::filesystem::path& dest) {
         auto output = file_output_stream::create(dest);
         if (!output) return crate::make_unexpected(output.error());
