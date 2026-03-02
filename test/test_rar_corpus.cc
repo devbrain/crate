@@ -811,10 +811,12 @@ TEST_SUITE("RarArchive - Encrypted") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        // Encrypted header archives should fail to open without password
-        if (!archive.has_value()) {
-            CHECK(true);  // This is expected behavior
+        // Encrypted header archives may fail to open without password,
+        // or may open but mark files as encrypted
+        if (archive.has_value()) {
+            CHECK((*archive)->has_encrypted_files());
         } else {
+            CHECK(archive.error().code() != error_code::Success);
         }
     }
 
@@ -900,9 +902,8 @@ TEST_SUITE("RarArchive - SFX") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
-            // This is expected - SFX needs special handling to find RAR signature
-            CHECK(true);
+            // SFX needs special handling to find RAR signature
+            MESSAGE("SFX open failed (expected): ", archive.error().message());
             return;
         }
 
@@ -919,8 +920,7 @@ TEST_SUITE("RarArchive - SFX") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
-            CHECK(true);
+            MESSAGE("SFX open failed (expected): ", archive.error().message());
             return;
         }
 
@@ -937,8 +937,7 @@ TEST_SUITE("RarArchive - SFX") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
-            CHECK(true);
+            MESSAGE("SFX open failed (expected): ", archive.error().message());
             return;
         }
 
@@ -959,10 +958,7 @@ TEST_SUITE("RarArchive - External Symlinks") {
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
-
-        // Just verify we can open - external symlinks won't extract the same
-
-        CHECK(true);
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("Test 26 - Symlink to ../2.txt") {
@@ -971,9 +967,7 @@ TEST_SUITE("RarArchive - External Symlinks") {
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
-
-
-        CHECK(true);
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("Test 32 - Symlink to /tmp") {
@@ -982,9 +976,7 @@ TEST_SUITE("RarArchive - External Symlinks") {
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
-
-
-        CHECK(true);
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("Test 46 - Symlink outside with national chars") {
@@ -993,9 +985,7 @@ TEST_SUITE("RarArchive - External Symlinks") {
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
-
-
-        CHECK(true);
+        CHECK(!(*archive)->files().empty());
     }
 }
 
@@ -1089,16 +1079,9 @@ TEST_SUITE("RarArchive - Corpus Summary") {
     }
 
     TEST_CASE("Known limitations summary") {
-
-
-
-
-
-
-
-
-
-        CHECK(true);  // Informational test
+        // Encrypted headers (test 05), SFX (54-56), multivolume (17, 57)
+        // require features not yet implemented
+        MESSAGE("See test suite results for current coverage status");
     }
 }
 

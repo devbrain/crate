@@ -505,8 +505,10 @@ TEST_SUITE("RarArchive - Encryption API") {
         const u8 iv[16] = {0};
         decryptor.init_rar5("password", salt5, 15, iv);
 
-        // Should not crash
-        CHECK(true);
+        // Verify init completed without crash by performing a no-op decrypt
+        std::array<u8, 16> block{};
+        decryptor.decrypt(block.data(), block.size());
+        CHECK(true); // reached here — init + decrypt didn't crash
     }
 }
 

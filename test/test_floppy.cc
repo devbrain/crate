@@ -33,10 +33,7 @@ TEST_SUITE("FloppyImage - Basic") {
 TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
     TEST_CASE("Disk 1 - Install & Compiler") {
         auto image_path = FLOPPY_DIR / "Borland - Turbo Pascal v5.0 - Disk 1 of 3 - Install & Compiler.img";
-        if (!std::filesystem::exists(image_path)) {
-            MESSAGE("Test data not available, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(image_path));
 
         auto data = read_file(image_path);
         REQUIRE(data.size() == 368640);  // 360KB floppy
@@ -61,10 +58,7 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
 
     TEST_CASE("Disk 2 - Help & Utilities") {
         auto image_path = FLOPPY_DIR / "Borland - Turbo Pascal v5.0 - Disk 2 of 3 - Help & Utilities.img";
-        if (!std::filesystem::exists(image_path)) {
-            MESSAGE("Test data not available, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(image_path));
 
         auto data = read_file(image_path);
         REQUIRE(data.size() == 368640);
@@ -83,10 +77,7 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
 
     TEST_CASE("Disk 3 - BGI, Demos, Doc") {
         auto image_path = FLOPPY_DIR / "Borland - Turbo Pascal v5.0 - Disk 3 of 3 - BGI, Demos, Doc, & Turbo3.img";
-        if (!std::filesystem::exists(image_path)) {
-            MESSAGE("Test data not available, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(image_path));
 
         auto data = read_file(image_path);
         REQUIRE(data.size() == 368640);
@@ -105,10 +96,7 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
 
     TEST_CASE("Extract file from Disk 1") {
         auto image_path = FLOPPY_DIR / "Borland - Turbo Pascal v5.0 - Disk 1 of 3 - Install & Compiler.img";
-        if (!std::filesystem::exists(image_path)) {
-            MESSAGE("Test data not available, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(image_path));
 
         auto image = floppy_image::open(image_path);
         REQUIRE(image.has_value());
@@ -143,10 +131,7 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
 
     TEST_CASE("Extract all files from Disk 1") {
         auto image_path = FLOPPY_DIR / "Borland - Turbo Pascal v5.0 - Disk 1 of 3 - Install & Compiler.img";
-        if (!std::filesystem::exists(image_path)) {
-            MESSAGE("Test data not available, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(image_path));
 
         auto image = floppy_image::open(image_path);
         REQUIRE(image.has_value());

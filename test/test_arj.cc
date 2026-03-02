@@ -93,12 +93,20 @@ TEST_SUITE("ArjArchive - Method 4 Decompressor") {
 TEST_SUITE("ArjArchive - LZH Decompressor") {
     TEST_CASE("LH6 format initialization") {
         lzh_decompressor decomp(lzh_format::LH6);
-        CHECK(true);
+        std::array<u8, 0> input{};
+        std::array<u8, 100> output{};
+        auto result = decomp.decompress(input, output);
+        CHECK(result.has_value());
+        CHECK(*result == 0);
     }
 
     TEST_CASE("LH7 format initialization") {
         lzh_decompressor decomp(lzh_format::LH7);
-        CHECK(true);
+        std::array<u8, 0> input{};
+        std::array<u8, 100> output{};
+        auto result = decomp.decompress(input, output);
+        CHECK(result.has_value());
+        CHECK(*result == 0);
     }
 
     TEST_CASE("Empty input") {
@@ -113,8 +121,16 @@ TEST_SUITE("ArjArchive - LZH Decompressor") {
 }
 
 TEST_SUITE("ArjArchive - Path Sanitization") {
-    TEST_CASE("Backslash conversion") {
-        CHECK(true);
+    TEST_CASE("Paths with backslashes are normalized") {
+        auto archive_path = test::arj_dir() / "stored.arj";
+        REQUIRE(std::filesystem::exists(archive_path));
+
+        auto archive = arj_archive::open(archive_path);
+        REQUIRE(archive.has_value());
+
+        for (const auto& f : (*archive)->files()) {
+            CHECK(f.name.find('\\') == std::string::npos);
+        }
     }
 }
 

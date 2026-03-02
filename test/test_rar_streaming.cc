@@ -126,26 +126,33 @@ TEST_SUITE("Rar29Decompressor - Streaming") {
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
-        // Archive may be V4 or V5, just check it opens
 
-        // Get a compressed file to test
         const auto& files = (*archive)->files();
         REQUIRE(!files.empty());
 
-        // Extract using normal method to get expected output
+        // Extract each file and verify against expected size
+        size_t verified = 0;
         for (const auto& file : files) {
             auto expected = (*archive)->extract(file);
-            if (!expected) {
-                continue;  // Skip files that can't be extracted
-            }
-            if (expected->empty()) {
-                continue;  // Skip empty files
+            if (!expected || expected->empty()) {
+                continue;
             }
 
             CAPTURE(file.name);
             CHECK(expected->size() == file.uncompressed_size);
-            break;  // One file is enough to verify
+
+            // Verify via extract_stream produces identical output
+            auto stream = (*archive)->extract_stream(file);
+            REQUIRE(stream.has_value());
+            std::string from_stream((std::istreambuf_iterator<char>(**stream)),
+                                     std::istreambuf_iterator<char>());
+            CHECK(from_stream.size() == expected->size());
+            CHECK(std::equal(expected->begin(), expected->end(),
+                             reinterpret_cast<const u8*>(from_stream.data()),
+                             reinterpret_cast<const u8*>(from_stream.data()) + from_stream.size()));
+            ++verified;
         }
+        CHECK(verified > 0);
     }
 }
 

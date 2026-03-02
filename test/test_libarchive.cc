@@ -34,9 +34,7 @@ TEST_SUITE("LibarchiveArchive - Basic") {
 TEST_SUITE("LibarchiveArchive - ZIP via libarchive") {
     TEST_CASE("Open ZIP file") {
         auto archive_path = ZIP_DIR / "stored.zip";
-        if (!std::filesystem::exists(archive_path)) {
-            return;  // Skip if test data not available
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = libarchive_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -47,9 +45,7 @@ TEST_SUITE("LibarchiveArchive - ZIP via libarchive") {
 
     TEST_CASE("Extract from ZIP") {
         auto archive_path = ZIP_DIR / "stored.zip";
-        if (!std::filesystem::exists(archive_path)) {
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = libarchive_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -64,9 +60,7 @@ TEST_SUITE("LibarchiveArchive - ZIP via libarchive") {
 
     TEST_CASE("Format name") {
         auto archive_path = ZIP_DIR / "stored.zip";
-        if (!std::filesystem::exists(archive_path)) {
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = libarchive_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -79,9 +73,7 @@ TEST_SUITE("LibarchiveArchive - ZIP via libarchive") {
 TEST_SUITE("LibarchiveArchive - Error Handling") {
     TEST_CASE("Invalid entry index") {
         auto archive_path = ZIP_DIR / "stored.zip";
-        if (!std::filesystem::exists(archive_path)) {
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = libarchive_archive::open(archive_path);
         REQUIRE(archive.has_value());

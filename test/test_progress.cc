@@ -98,10 +98,8 @@ TEST_SUITE("Progress - Explode Decompressor") {
         auto compressed = read_file(test::pkware_dir() / "large.imploded");
         auto expected = read_file(test::pkware_dir() / "large.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         progress_tracker tracker;
         explode_decompressor decompressor;
@@ -121,10 +119,7 @@ TEST_SUITE("Progress - Inflate Decompressor") {
     TEST_CASE("Progress callback is called during decompression") {
         auto compressed = read_file(test::testdata_dir() / "gz" / "LICENSE.gz");
 
-        if (compressed.empty()) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(!compressed.empty());
 
         // Skip gzip header (10 bytes minimum)
         if (compressed.size() < 18) {
@@ -168,8 +163,9 @@ TEST_SUITE("Progress - Diet Decompressor") {
         std::vector<u8> input = {};
         std::vector<u8> output(1024);
 
-        // Diet needs valid input, so just check callback setup works
-        CHECK(true);  // Callback was set without crashing
+        // Diet needs valid compressed input, so just verify the callback
+        // was set but not yet called (no decompression occurred)
+        CHECK(tracker.call_count == 0);
     }
 }
 
@@ -180,10 +176,7 @@ TEST_SUITE("Progress - Diet Decompressor") {
 TEST_SUITE("Progress - ARJ Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::arj_dir() / "method1.arj";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = arj_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -204,11 +197,8 @@ TEST_SUITE("Progress - ARJ Archive") {
 
 TEST_SUITE("Progress - CAB Archive") {
     TEST_CASE("Byte progress callback during extraction") {
-        auto archive_path = test::cab_dir() / "mszip_lzx_qtm.cab";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        auto archive_path = test::cab_dir() / "simple.cab";
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = cab_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -230,10 +220,7 @@ TEST_SUITE("Progress - CAB Archive") {
 TEST_SUITE("Progress - LHA Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::lha_dir() / "lha_os2_208" / "lh5.lzh";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = lha_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -255,10 +242,7 @@ TEST_SUITE("Progress - LHA Archive") {
 TEST_SUITE("Progress - ARC Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::arc_dir() / "crunch.arc";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = arc_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -280,10 +264,7 @@ TEST_SUITE("Progress - ARC Archive") {
 TEST_SUITE("Progress - ZOO Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::zoo_dir() / "default.zoo";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = zoo_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -305,10 +286,7 @@ TEST_SUITE("Progress - ZOO Archive") {
 TEST_SUITE("Progress - HA Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::ha_dir() / "asc.ha";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = ha_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -330,10 +308,7 @@ TEST_SUITE("Progress - HA Archive") {
 TEST_SUITE("Progress - HYP Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::hyp_dir() / "license.hyp";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = hyp_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -355,10 +330,7 @@ TEST_SUITE("Progress - HYP Archive") {
 TEST_SUITE("Progress - ACE Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::ace_dir() / "license1.ace";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = ace_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -380,10 +352,7 @@ TEST_SUITE("Progress - ACE Archive") {
 TEST_SUITE("Progress - StuffIt Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto data = read_file(archive_path);
         auto archive = stuffit_archive::open(data);
@@ -419,10 +388,7 @@ TEST_SUITE("Progress - StuffIt Archive") {
 TEST_SUITE("Progress - RAR Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::rar_dir() / "unrar_test_01.rar";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = rar_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -445,10 +411,7 @@ TEST_SUITE("Progress - CHM Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         // Use a CVE test file that should be parseable
         auto archive_path = test::chm_dir() / "cve-2015-4468-namelen-bounds.chm";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = chm_archive::open(archive_path);
         if (!archive.has_value()) {
@@ -494,10 +457,7 @@ TEST_SUITE("Progress - CHM Archive") {
 TEST_SUITE("Progress - ZIP Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::testdata_dir() / "zip" / "test.zip";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = zip_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -532,10 +492,7 @@ TEST_SUITE("Progress - ZIP Archive") {
 TEST_SUITE("Progress - Floppy Image") {
     TEST_CASE("Byte progress callback during extraction") {
         auto archive_path = test::floppy_dir() / "Borland - Turbo Pascal v5.0 - Disk 1 of 3 - Install & Compiler.img";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = floppy_image::open(archive_path);
         REQUIRE(archive.has_value());
@@ -574,10 +531,7 @@ TEST_SUITE("Progress - libarchive Archive") {
     TEST_CASE("Byte progress callback during extraction") {
         // Use any archive that libarchive can read
         auto archive_path = test::testdata_dir() / "zip" / "test.zip";
-        if (!std::filesystem::exists(archive_path)) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = libarchive_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -617,10 +571,7 @@ TEST_SUITE("Progress - Zstd Decompressor") {
     TEST_CASE("Progress callback is called during decompression") {
         auto compressed = read_file(test::testdata_dir() / "zstd" / "LICENSE.zst");
 
-        if (compressed.empty()) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(!compressed.empty());
 
         progress_tracker tracker;
         zstd_decompressor decompressor;
@@ -645,10 +596,7 @@ TEST_SUITE("Progress - Brotli Decompressor") {
     TEST_CASE("Progress callback is called during decompression") {
         auto compressed = read_file(test::testdata_dir() / "brotli" / "LICENSE.br");
 
-        if (compressed.empty()) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(!compressed.empty());
 
         progress_tracker tracker;
         brotli_decompressor decompressor;
@@ -673,10 +621,7 @@ TEST_SUITE("Progress - Bzip2 Decompressor") {
     TEST_CASE("Progress callback is called during decompression") {
         auto compressed = read_file(test::testdata_dir() / "bzip2" / "LICENSE.bz2");
 
-        if (compressed.empty()) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(!compressed.empty());
 
         progress_tracker tracker;
         bzip2_decompressor decompressor;
@@ -701,10 +646,7 @@ TEST_SUITE("Progress - XZ Decompressor") {
     TEST_CASE("Progress callback is called during decompression") {
         auto compressed = read_file(test::testdata_dir() / "xz" / "LICENSE.xz");
 
-        if (compressed.empty()) {
-            MESSAGE("Test data not found, skipping");
-            return;
-        }
+        REQUIRE(!compressed.empty());
 
         progress_tracker tracker;
         xz_decompressor decompressor;

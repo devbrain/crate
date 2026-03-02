@@ -574,7 +574,7 @@ TEST_SUITE("ChmArchive - Content Validation") {
         FAIL("Did not find main.hhc file");
     }
 
-    TEST_CASE("Validate second.hhc content (LZX compressed)" * doctest::skip(true)) {
+    TEST_CASE("Validate second.hhc content (LZX compressed)") {
         auto chm_path = test::chm_dir() / "second.chm";
         auto ref_path = test::chm_dir() / "reference" / "second" / "second.hhc";
         if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
