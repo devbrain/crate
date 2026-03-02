@@ -1,3 +1,12 @@
+# Documentation
+docs/
+
+# Local tooling and cache
+.beads/
+.cache/
+CLAUDE.md
+AGENTS.md
+
 # Build directories
 build/
 cmake-build-*/
