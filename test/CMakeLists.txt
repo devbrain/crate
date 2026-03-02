@@ -20,6 +20,7 @@ add_executable(crate_tests
     test_ha.cc
     test_huffman.cc
     test_hyp.cc
+    test_istream.cc
     test_kwaj.cc
     test_lha.cc
     test_libarchive.cc
