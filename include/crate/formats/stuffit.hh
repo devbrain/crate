@@ -32,6 +32,8 @@ namespace crate {
         public:
             static result_t <std::unique_ptr <stuffit_archive>> open(byte_span data);
 
+            static result_t <std::unique_ptr <stuffit_archive>> open(std::istream& stream);
+
             ~stuffit_archive() override;
 
             [[nodiscard]] const std::vector <file_entry>& files() const override;

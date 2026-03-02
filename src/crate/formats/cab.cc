@@ -93,6 +93,12 @@ namespace {
         return open(data);
     }
 
+    result_t <std::unique_ptr <cab_archive>> cab_archive::open(std::istream& stream) {
+        auto data = read_stream(stream);
+        if (!data) return crate::make_unexpected(data.error());
+        return open(*data);
+    }
+
     const std::vector <file_entry>& cab_archive::files() const { return pimpl_->files_; }
 
     result_t <byte_vector> cab_archive::extract(const file_entry& entry) {

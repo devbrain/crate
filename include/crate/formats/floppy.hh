@@ -24,6 +24,9 @@ public:
     /// @return Archive instance or error
     static result_t<std::unique_ptr<floppy_image>> open(const std::filesystem::path& path);
 
+    /// Open a floppy disk image from a stream
+    static result_t<std::unique_ptr<floppy_image>> open(std::istream& stream);
+
     /// Get list of all files
     /// Directories are not included; file paths include subdirectory components
     [[nodiscard]] const std::vector<file_entry>& files() const override;

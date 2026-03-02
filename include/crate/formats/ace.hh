@@ -19,6 +19,8 @@ namespace crate {
             static result_t <std::unique_ptr <ace_archive>>
             open(const std::filesystem::path& path);
 
+            static result_t <std::unique_ptr <ace_archive>> open(std::istream& stream);
+
             [[nodiscard]] const std::vector <file_entry>& files() const override;
 
             result_t <byte_vector> extract(const file_entry& entry) override;

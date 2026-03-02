@@ -645,6 +645,12 @@ namespace crate {
         return open(data);
     }
 
+    result_t <std::unique_ptr <ace_archive>> ace_archive::open(std::istream& stream) {
+        auto data = read_stream(stream);
+        if (!data) return crate::make_unexpected(data.error());
+        return open(*data);
+    }
+
     const std::vector <file_entry>& ace_archive::files() const {
         return m_pimpl->files_;
     }

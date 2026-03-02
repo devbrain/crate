@@ -102,6 +102,12 @@ namespace crate {
         return open(data);
     }
 
+    result_t <std::unique_ptr <chm_archive>> chm_archive::open(std::istream& stream) {
+        auto data = read_stream(stream);
+        if (!data) return crate::make_unexpected(data.error());
+        return open(*data);
+    }
+
     const std::vector <file_entry>& chm_archive::files() const { return m_pimpl->files_; }
 
     void_result_t chm_archive::decompress_content() {

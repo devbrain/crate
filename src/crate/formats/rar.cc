@@ -1208,6 +1208,11 @@ result_t<std::unique_ptr<rar_archive>> rar_archive::open(const std::filesystem::
 
     return open(data);
 }
+result_t<std::unique_ptr<rar_archive>> rar_archive::open(std::istream& stream) {
+    auto data = read_stream(stream);
+    if (!data) return crate::make_unexpected(data.error());
+    return open(*data);
+}
 result_t<std::unique_ptr<rar_archive>> rar_archive::open(byte_span first_volume, rar::volume_provider provider) {
     auto archive = std::unique_ptr<rar_archive>(new rar_archive());
     archive->pimpl_->volumes_.emplace_back(first_volume.begin(), first_volume.end());

@@ -1071,6 +1071,12 @@ namespace crate {
         return archive;
     }
 
+    result_t <std::unique_ptr <stuffit_archive>> stuffit_archive::open(std::istream& stream) {
+        auto data = read_stream(stream);
+        if (!data) return crate::make_unexpected(data.error());
+        return open(*data);
+    }
+
     const std::vector <file_entry>& stuffit_archive::files() const {
         return pimpl_->entries_;
     }

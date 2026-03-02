@@ -265,6 +265,12 @@ namespace crate {
         return open(data);
     }
 
+    result_t <std::unique_ptr <arc_archive>> arc_archive::open(std::istream& stream) {
+        auto data = read_stream(stream);
+        if (!data) return crate::make_unexpected(data.error());
+        return open(*data);
+    }
+
     const std::vector <file_entry>& arc_archive::files() const { return m_pimpl->files_; }
 
     result_t <byte_vector> arc_archive::extract(const file_entry& entry) {

@@ -20,6 +20,9 @@ namespace crate {
             /// Open an archive from a file path
             static result_t <std::unique_ptr <libarchive_archive>> open(const std::filesystem::path& path);
 
+            /// Open an archive from a stream
+            static result_t <std::unique_ptr <libarchive_archive>> open(std::istream& stream);
+
             const std::vector <file_entry>& files() const override;
             result_t <byte_vector> extract(const file_entry& entry) override;
 

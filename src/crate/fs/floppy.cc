@@ -167,6 +167,12 @@ result_t<std::unique_ptr<floppy_image>> floppy_image::open(const std::filesystem
     return open(data);
 }
 
+result_t<std::unique_ptr<floppy_image>> floppy_image::open(std::istream& stream) {
+    auto data = read_stream(stream);
+    if (!data) return crate::make_unexpected(data.error());
+    return open(*data);
+}
+
 const std::vector<file_entry>& floppy_image::files() const {
     return impl_->files;
 }

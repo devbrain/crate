@@ -156,6 +156,9 @@ namespace crate {
             // Open a single-volume archive from file
             static result_t <std::unique_ptr <rar_archive>> open(const std::filesystem::path& path);
 
+            // Open a single-volume archive from a stream
+            static result_t <std::unique_ptr <rar_archive>> open(std::istream& stream);
+
             // Open a multi-volume archive with custom volume provider
             // The provider is called to get subsequent volumes when needed
             static result_t <std::unique_ptr <rar_archive>> open(byte_span first_volume,

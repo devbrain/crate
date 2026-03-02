@@ -10,6 +10,7 @@ set(CRATE_SOURCES
         compression/arj_lz.cc
         compression/decompressor.cc
         compression/decompressing_stream.cc
+        compression/streams.cc
         compression/diet.cc
         compression/explode.cc
         compression/ha.cc
@@ -73,6 +74,7 @@ set(CRATE_PUBLIC_HEADERS
         ${PROJECT_SOURCE_DIR}/include/crate/compression/kwaj.hh
         ${PROJECT_SOURCE_DIR}/include/crate/compression/szdd.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/decompressor.hh
+        ${PROJECT_SOURCE_DIR}/include/crate/compression/streams.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/decompressing_stream.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/error.hh
         ${PROJECT_SOURCE_DIR}/include/crate/core/system.hh

@@ -3,6 +3,7 @@
 #include <crate/core/types.hh>
 #include <crate/core/error.hh>
 #include <fstream>
+#include <istream>
 #include <filesystem>
 #include <memory>
 #include <concepts>
@@ -180,4 +181,7 @@ namespace crate {
 
             std::ofstream file_;
     };
+    // Read an entire std::istream into a byte_vector
+    CRATE_EXPORT result_t<byte_vector> read_stream(std::istream& is);
+
 } // namespace crate

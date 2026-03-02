@@ -5,6 +5,7 @@
 #include <crate/core/system.hh>
 #include <functional>
 #include <filesystem>
+#include <istream>
 #include <concepts>
 
 namespace crate {
@@ -75,10 +76,13 @@ namespace crate {
     /// - files() method returning const vector<FileEntry>&
     /// - extract(FileEntry) method returning Result<ByteVector>
     template<typename T>
-    concept ArchiveLike = requires(T& archive, const T& const_archive, byte_span data, const file_entry& entry)
+    concept ArchiveLike = requires(T& archive, const T& const_archive, byte_span data,
+                                   std::istream& stream, const file_entry& entry)
     {
         // Must have a static open method
         { T::open(data) } -> std::same_as <result_t <std::unique_ptr <T>>>;
+        // Must have a static open-from-stream method
+        { T::open(stream) } -> std::same_as <result_t <std::unique_ptr <T>>>;
         // Must provide file listing
         { const_archive.files() } -> std::same_as <const std::vector <file_entry>&>;
         // Must be able to extract files

@@ -1268,6 +1268,12 @@ result_t<std::unique_ptr<lha_archive>> lha_archive::open(const std::filesystem::
     return open(data);
 }
 
+result_t<std::unique_ptr<lha_archive>> lha_archive::open(std::istream& stream) {
+    auto data = read_stream(stream);
+    if (!data) return crate::make_unexpected(data.error());
+    return open(*data);
+}
+
 const std::vector<file_entry>& lha_archive::files() const { return m_pimpl->files_; }
 
 result_t<byte_vector> lha_archive::extract(const file_entry& entry) {

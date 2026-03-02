@@ -133,6 +133,12 @@ result_t<std::unique_ptr<zip_archive>> zip_archive::open(const std::filesystem::
     return open(data);
 }
 
+result_t<std::unique_ptr<zip_archive>> zip_archive::open(std::istream& stream) {
+    auto data = read_stream(stream);
+    if (!data) return crate::make_unexpected(data.error());
+    return open(*data);
+}
+
 const std::vector<file_entry>& zip_archive::files() const {
     return pimpl_->files_;
 }
