@@ -141,6 +141,7 @@ if(NEUTRINO_CRATE_WITH_ZSTD)
         GIT_TAG v1.5.6
         GIT_SHALLOW TRUE
         SOURCE_SUBDIR build/cmake
+        PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zstd-cmake-compat.patch || true
     )
     FetchContent_MakeAvailable(zstd)
 endif()
@@ -178,6 +179,7 @@ if(NEUTRINO_CRATE_WITH_XZ)
     set(CREATE_XZ_SYMLINKS OFF CACHE BOOL "" FORCE)
     set(CREATE_LZMA_SYMLINKS OFF CACHE BOOL "" FORCE)
     set(BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_NLS OFF CACHE BOOL "" FORCE)
 
     FetchContent_Declare(xz
         GIT_REPOSITORY https://github.com/tukaani-project/xz.git

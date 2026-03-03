@@ -1,0 +1,10 @@
+--- a/build/cmake/CMakeLists.txt
++++ b/build/cmake/CMakeLists.txt
+@@ -7,7 +7,7 @@
+ # ################################################################
+
+-cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
++cmake_minimum_required(VERSION 3.10...3.31 FATAL_ERROR)
+
+ # As of 2018-12-26 ZSTD has been validated to build with cmake version 3.13.2 new policies.
+ # Set and use the newest cmake policies that are validated to work
