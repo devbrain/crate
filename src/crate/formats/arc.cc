@@ -55,8 +55,8 @@ namespace crate {
             // Read Huffman tree (array of node pairs)
             std::vector <std::array <i16, 2>> tree(num_nodes);
             for (u16 i = 0; i < num_nodes; i++) {
-                tree[i][0] = *reinterpret_cast <const i16*>(input.data() + pos);
-                tree[i][1] = *reinterpret_cast <const i16*>(input.data() + pos + 2);
+                tree[i][0] = static_cast<i16>(read_u16_le(input.data() + pos));
+                tree[i][1] = static_cast<i16>(read_u16_le(input.data() + pos + 2));
                 pos += 4;
             }
 
@@ -81,6 +81,7 @@ namespace crate {
                     node = tree[static_cast <size_t>(node)][static_cast <size_t>(bit)];
                 }
 
+                if (node >= 0) break; // Input exhausted mid-symbol
                 if (node == -(SPEOF + 1)) break; // End of file
                 if (node < -256) break; // Invalid
 

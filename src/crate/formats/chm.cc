@@ -176,6 +176,7 @@ namespace crate {
 
             if (comp_start_off >= comp_total) break;
             if (comp_end_off > comp_total) comp_end_off = comp_total;
+            if (comp_end_off <= comp_start_off) break;
 
             const u8* interval_ptr = comp_base + comp_start_off;
             size_t interval_len = comp_end_off - comp_start_off;
@@ -468,7 +469,7 @@ namespace crate {
                 }
 
                 // Move to next chunk
-                i32 next = *reinterpret_cast <const i32*>(chunk_data.data() + 16);
+                i32 next = static_cast<i32>(read_u32_le(chunk_data.data() + 16));
                 if (next < 0) break;
                 chunk = static_cast <u32>(next);
                 chunk_offset = section1_start + m_pimpl->itsp_.header_len +
@@ -527,9 +528,13 @@ namespace crate {
 
                 // Read reset table entries
                 m_pimpl->reset_table_.clear();
-                for (u32 i = 0; i < num_entries && header_len + i * entry_size + entry_size <= entry.length; i++) {
-                    u64 offset = read_u64_le(p + header_len + i * entry_size);
-                    m_pimpl->reset_table_.push_back(offset);
+                if (entry_size >= 8 && header_len <= entry.length) {
+                    auto max_entries = static_cast<u32>((entry.length - header_len) / entry_size);
+                    if (num_entries > max_entries) num_entries = max_entries;
+                    for (u32 i = 0; i < num_entries; i++) {
+                        u64 offset = read_u64_le(p + header_len + i * entry_size);
+                        m_pimpl->reset_table_.push_back(offset);
+                    }
                 }
             } else if (entry.name.find("Content") != std::string::npos &&
                        entry.name.find("MSCompressed") != std::string::npos) {
