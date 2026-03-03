@@ -10,7 +10,7 @@ namespace crate {
 // =============================================================================
 // Streaming Arithmetic Decoder (16-bit range coder with E3 underflow scaling)
 // =============================================================================
-class ha_arithmetic_decoder {
+class CRATE_EXPORT ha_arithmetic_decoder {
 public:
     static constexpr u16 RANGE_MAX = 0xFFFF;
     static constexpr u16 MSB_MASK = 0x8000;
@@ -43,7 +43,7 @@ private:
 // =============================================================================
 // Binary Tree Frequency Table for ASC
 // =============================================================================
-class ha_binary_tree_table {
+class CRATE_EXPORT ha_binary_tree_table {
 public:
     ha_binary_tree_table() = default;
     ha_binary_tree_table(size_t leaf_count, u16 initial_value);

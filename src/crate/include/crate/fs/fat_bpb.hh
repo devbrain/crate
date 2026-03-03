@@ -34,7 +34,7 @@ struct bpb {
 
 // Parse BPB from boot sector
 // Expects at least 512 bytes of data
-result_t<bpb> parse_bpb(byte_span data);
+CRATE_EXPORT result_t<bpb> parse_bpb(byte_span data);
 
 // Get byte offset for a given cluster number
 // Cluster numbering starts at 2 (0 and 1 are reserved)

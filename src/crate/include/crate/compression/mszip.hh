@@ -39,7 +39,7 @@ namespace deflate {
     };
 }
 
-class mszip_decompressor : public decompressor {
+class CRATE_EXPORT mszip_decompressor : public decompressor {
 public:
     mszip_decompressor();
 

@@ -35,10 +35,10 @@ namespace rnc {
     constexpr u32 SIGNATURE = 0x524E43; // "RNC" in big-endian
 
     // CRC-16 table for RNC format
-    extern const std::array<u16, 256> crc_table;
+    CRATE_EXPORT extern const std::array<u16, 256> crc_table;
 
     // Calculate RNC CRC-16
-    u16 calculate_crc(byte_span data);
+    CRATE_EXPORT u16 calculate_crc(byte_span data);
 }
 
 }  // namespace crate

@@ -23,7 +23,7 @@ namespace crate {
         // Simple file-based volume provider that follows RAR naming conventions
         // RAR4: archive.rar, archive.r00, archive.r01, ...
         // RAR5: archive.part1.rar, archive.part2.rar, ...
-        volume_provider make_file_volume_provider(const std::filesystem::path& first_volume);
+        CRATE_EXPORT volume_provider make_file_volume_provider(const std::filesystem::path& first_volume);
 
         // RAR version
         enum version {

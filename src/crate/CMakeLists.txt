@@ -220,8 +220,6 @@ add_library(crate ${_lib_type}
 )
 add_library(neutrino::crate ALIAS crate)
 
-set_target_properties(crate PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-
 target_compile_features(crate PUBLIC cxx_std_20)
 
 # Generate export header

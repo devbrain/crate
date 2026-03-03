@@ -21,7 +21,7 @@ struct dir_entry {
 
 // Directory entry parser
 // Reads 32-byte directory entries, handling LFN accumulation
-class directory_reader {
+class CRATE_EXPORT directory_reader {
 public:
     // Construct reader for directory data
     // data: raw directory bytes (must be multiple of 32)

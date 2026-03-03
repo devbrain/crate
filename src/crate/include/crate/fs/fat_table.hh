@@ -18,7 +18,7 @@ enum class cluster_status {
     Reserved        // Reserved cluster
 };
 
-class fat_table {
+class CRATE_EXPORT fat_table {
 public:
     // Construct FAT table reader
     // fat_data: raw FAT table bytes
