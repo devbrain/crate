@@ -113,12 +113,9 @@ if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
         GIT_REPOSITORY https://github.com/libarchive/libarchive.git
         GIT_TAG v3.7.7
         GIT_SHALLOW TRUE
+        PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/libarchive-cmake-compat.patch || true
     )
-    # libarchive's CMakeLists.txt uses cmake_minimum_required < 3.5,
-    # which newer CMake rejects without this policy override.
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
     FetchContent_MakeAvailable(libarchive)
-    unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
 endif()
 
 # Fetch and build zstd (optional)
@@ -158,7 +155,7 @@ if(NEUTRINO_CRATE_WITH_BROTLI)
         GIT_REPOSITORY https://github.com/google/brotli.git
         GIT_TAG v1.1.0
         GIT_SHALLOW TRUE
-        PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/brotli-disable-tools.patch
+        PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/brotli-disable-tools.patch || true
     )
     FetchContent_MakeAvailable(brotli)
 endif()
@@ -186,7 +183,7 @@ if(NEUTRINO_CRATE_WITH_XZ)
         GIT_REPOSITORY https://github.com/tukaani-project/xz.git
         GIT_TAG v5.6.3
         GIT_SHALLOW TRUE
-        PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/xz-disable-tools.patch
+        PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/xz-disable-tools.patch || true
     )
     FetchContent_MakeAvailable(xz)
 endif()
