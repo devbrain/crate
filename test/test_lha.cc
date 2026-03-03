@@ -257,8 +257,10 @@ TEST_SUITE("LhaArchive - Archive Tests") {
     TEST_CASE("regression - Regression tests") {
         // The regression directory contains intentionally broken archives
         // like truncated.lzh, which are expected to fail.
-        // We just verify we don't crash on them (quiet=true suppresses expected errors).
+        // We just verify we don't crash on them.
         auto result = test_archive_directory("regression", true, true);
-        (void)result;
+        // Some archives may parse (success) and some may fail — that's expected.
+        // But we must have processed at least one archive.
+        CHECK(result.success + result.fail > 0);
     }
 }

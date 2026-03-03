@@ -17,9 +17,12 @@ TEST_SUITE("LibarchiveArchive - Basic") {
     TEST_CASE("Invalid data") {
         std::array<u8, 16> invalid_data = {0};
         auto archive = libarchive_archive::open(invalid_data);
-        // libarchive may or may not fail on invalid data depending on format detection
-        // Just check it doesn't crash
-        (void)archive;
+        // libarchive may succeed with empty file list or fail — either is acceptable
+        if (archive.has_value()) {
+            CHECK(archive.value()->files().empty());
+        } else {
+            CHECK(!archive.has_value());
+        }
     }
 
     TEST_CASE("Empty data") {
@@ -28,6 +31,8 @@ TEST_SUITE("LibarchiveArchive - Basic") {
         // libarchive accepts empty data as a valid archive with no entries
         if (archive.has_value()) {
             CHECK(archive.value()->files().empty());
+        } else {
+            CHECK(!archive.has_value());
         }
     }
 }

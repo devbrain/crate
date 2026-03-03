@@ -844,14 +844,8 @@ TEST_SUITE("RarArchive - Multivolume") {
 
         CHECK((*archive)->version() == rar::V5);
         CHECK((*archive)->is_multivolume());
-
-        // With all volumes loaded, we should have more than 1 volume
-        if ((*archive)->volume_count() > 1) {
-            // Check split files exist
-            for (const auto& file : (*archive)->files()) {
-                (void)file;
-            }
-        }
+        CHECK((*archive)->volume_count() > 1);
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("RAR4 multivolume detection") {
@@ -877,14 +871,9 @@ TEST_SUITE("RarArchive - Multivolume") {
 
         CHECK((*archive)->version() == rar::V4);
         CHECK((*archive)->is_multivolume());
-
-        // With all volumes loaded, we should have more than 1 volume
-        if ((*archive)->volume_count() > 1) {
-            // Check split files exist
-            for (const auto& file : (*archive)->files()) {
-                (void)file;
-            }
-        }
+        // part2 is missing from test corpus, so only 1 volume loads
+        CHECK((*archive)->volume_count() >= 1);
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("Custom volume provider") {
@@ -931,7 +920,7 @@ TEST_SUITE("RarArchive - Multivolume") {
         auto archive = rar_archive::open(first_vol, provider);
         REQUIRE(archive.has_value());
 
-        (void)requested_volumes;  // Used for debugging
+        CHECK(!requested_volumes.empty());
         CHECK((*archive)->is_multivolume());
     }
 

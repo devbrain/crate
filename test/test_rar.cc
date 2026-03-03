@@ -156,10 +156,15 @@ TEST_SUITE("RarArchive - RAR4 Symlinks") {
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
 
-        // Without member metadata, just ensure extraction attempts don't crash.
+        size_t attempted = 0;
         for (const auto& file : (*archive)->files()) {
-            (void)(*archive)->extract(file);
+            auto result = (*archive)->extract(file);
+            // Symlink entries may extract as empty or return the link target;
+            // either success or UnsupportedCompression is acceptable
+            CHECK((result.has_value() || result.error().code() == error_code::UnsupportedCompression));
+            attempted++;
         }
+        CHECK(attempted > 0);
     }
 }
 

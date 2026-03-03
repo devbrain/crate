@@ -120,10 +120,7 @@ TEST_SUITE("Progress - Inflate Decompressor") {
 
         REQUIRE(!compressed.empty());
 
-        // Skip gzip header (10 bytes minimum)
-        if (compressed.size() < 18) {
-            return;
-        }
+        REQUIRE(compressed.size() >= 18);
 
         // Find the start of deflate data (after gzip header)
         size_t header_end = 10;
@@ -150,19 +147,22 @@ TEST_SUITE("Progress - Inflate Decompressor") {
 
 TEST_SUITE("Progress - Diet Decompressor") {
     TEST_CASE("Progress callback is called during decompression") {
-        // Diet compressed files are rare, create synthetic test
-        // For now, just verify the callback can be set
+        auto compressed = read_file(test::diet_dir() / "sprites.c");
+        auto expected = read_file(test::diet_dir() / "sprites.d");
+
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
+
         progress_tracker tracker;
         diet_decompressor decompressor;
         decompressor.set_progress_callback(tracker.make_decompressor_callback());
 
-        // Empty input should not crash
-        std::vector<u8> input = {};
-        std::vector<u8> output(1024);
+        std::vector<u8> output(expected.size() + 1024);
+        auto result = decompressor.decompress(compressed, output);
 
-        // Diet needs valid compressed input, so just verify the callback
-        // was set but not yet called (no decompression occurred)
-        CHECK(tracker.call_count == 0);
+        REQUIRE(result.has_value());
+        CHECK(tracker.call_count > 0);
+        CHECK(tracker.last_bytes_written == *result);
     }
 }
 
