@@ -633,11 +633,12 @@ TEST_SUITE("KwajDecompressor - Valid Files Comprehensive") {
             "123"   // 3
         };
 
+        size_t processed = 0;
         for (int x = 0; x <= 8; x++) {
             for (int y = 0; y <= 3; y++) {
                 std::string filename = "f" + std::to_string(x) + std::to_string(y) + ".kwj";
                 auto path = ::test::testdata_dir() / "kwaj" / filename;
-                if (!std::filesystem::exists(path)) continue;
+                REQUIRE_MESSAGE(std::filesystem::exists(path), "Missing fixture: " << filename);
 
                 auto data = load_kwaj_file(path);
                 REQUIRE_MESSAGE(data.has_value(), "Failed to load " << filename);
@@ -662,7 +663,9 @@ TEST_SUITE("KwajDecompressor - Valid Files Comprehensive") {
                 // Verify extraction works
                 auto result = decompress_kwaj(*data);
                 CHECK_MESSAGE(result.has_value(), "Failed to extract " << filename);
+                processed++;
             }
         }
+        CHECK(processed == 36);
     }
 }

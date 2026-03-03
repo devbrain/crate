@@ -35,9 +35,8 @@ TEST_SUITE("ExplodeDecompressor") {
         auto compressed = read_file(::test::pkware_dir() / "small.imploded");
         auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         explode_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -54,9 +53,8 @@ TEST_SUITE("ExplodeDecompressor") {
         auto compressed = read_file(::test::pkware_dir() / "medium.imploded");
         auto expected = read_file(::test::pkware_dir() / "medium.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         explode_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -73,9 +71,8 @@ TEST_SUITE("ExplodeDecompressor") {
         auto compressed = read_file(::test::pkware_dir() / "large.imploded");
         auto expected = read_file(::test::pkware_dir() / "large.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         explode_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -92,9 +89,8 @@ TEST_SUITE("ExplodeDecompressor") {
         auto compressed = read_file(::test::pkware_dir() / "binary.imploded");
         auto expected = read_file(::test::pkware_dir() / "binary.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         explode_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -111,9 +107,8 @@ TEST_SUITE("ExplodeDecompressor") {
         auto compressed = read_file(::test::pkware_dir() / "no-explicit-end.imploded");
         auto expected = read_file(::test::pkware_dir() / "no-explicit-end.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         explode_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -130,9 +125,8 @@ TEST_SUITE("ExplodeDecompressor") {
         auto compressed = read_file(::test::pkware_dir() / "small.imploded");
         auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         memory_input_stream input(byte_span{compressed});
         vector_output_stream output;
@@ -179,9 +173,8 @@ TEST_SUITE("ExplodeStreaming") {
         auto compressed = read_file(::test::pkware_dir() / "small.imploded");
         auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         streaming_test_config config;
         config.name = "PKWARE small";
@@ -198,9 +191,8 @@ TEST_SUITE("ExplodeStreaming") {
         auto compressed = read_file(::test::pkware_dir() / "no-explicit-end.imploded");
         auto expected = read_file(::test::pkware_dir() / "no-explicit-end.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         streaming_test_config config;
         config.name = "PKWARE implicit end";
@@ -216,9 +208,8 @@ TEST_SUITE("ExplodeStreaming") {
         auto compressed = read_file(::test::pkware_dir() / "medium.imploded");
         auto expected = read_file(::test::pkware_dir() / "medium.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         streaming_test_config config;
         config.name = "PKWARE medium";
@@ -235,9 +226,8 @@ TEST_SUITE("ExplodeStreaming") {
         auto compressed = read_file(::test::pkware_dir() / "large.imploded");
         auto expected = read_file(::test::pkware_dir() / "large.decomp");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         streaming_test_config config;
         config.name = "PKWARE large";

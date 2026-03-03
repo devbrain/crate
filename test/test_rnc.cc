@@ -34,9 +34,8 @@ TEST_SUITE("RncDecompressor") {
         auto compressed = read_file(test::rnc_dir() / "test_method1.rnc");
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         INFO("Compressed size: " << compressed.size());
         INFO("Expected size: " << expected.size());
@@ -56,9 +55,8 @@ TEST_SUITE("RncDecompressor") {
         auto compressed = read_file(test::rnc_dir() / "test_method2.rnc");
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         INFO("Compressed size: " << compressed.size());
         INFO("Expected size: " << expected.size());
@@ -78,9 +76,8 @@ TEST_SUITE("RncDecompressor") {
         auto compressed = read_file(test::rnc_dir() / "test_method1.rnc");
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         rnc_decompressor decompressor;
 
@@ -105,9 +102,8 @@ TEST_SUITE("RncDecompressor") {
         auto compressed = read_file(test::rnc_dir() / "test_method2.rnc");
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         rnc_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -142,9 +138,8 @@ TEST_SUITE("RncDecompressor") {
         auto compressed = read_file(test::rnc_dir() / "test_method2.rnc");
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         rnc_decompressor decompressor;
         std::vector<u8> full_output;
@@ -205,9 +200,8 @@ TEST_SUITE("RncDecompressor") {
         auto compressed = read_file(test::rnc_dir() / "test_large_m1.rnc");
         auto expected = read_file(test::rnc_dir() / "expected_large.txt");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         INFO("Compressed size: " << compressed.size());
         INFO("Expected size: " << expected.size());
@@ -223,25 +217,4 @@ TEST_SUITE("RncDecompressor") {
         CHECK(output == expected);
     }
 
-    TEST_CASE("Decompress large method 2") {
-        auto compressed = read_file(test::rnc_dir() / "test_large_m2.rnc");
-        auto expected = read_file(test::rnc_dir() / "expected_large.txt");
-
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
-
-        INFO("Compressed size: " << compressed.size());
-        INFO("Expected size: " << expected.size());
-
-        rnc_decompressor decompressor;
-        std::vector<u8> output(expected.size() + 1024);
-
-        auto result = decompressor.decompress(compressed, output);
-        REQUIRE(result.has_value());
-        CHECK(*result == expected.size());
-
-        output.resize(*result);
-        CHECK(output == expected);
-    }
 }

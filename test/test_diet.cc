@@ -33,9 +33,8 @@ TEST_SUITE("DietDecompressor") {
         auto compressed = read_file(test::diet_dir() / "sprites.c");
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         INFO("Compressed size: " << compressed.size());
         INFO("Expected size: " << expected.size());
@@ -55,9 +54,8 @@ TEST_SUITE("DietDecompressor") {
         auto compressed = read_file(test::diet_dir() / "sprites.c");
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         diet_decompressor decompressor;
 
@@ -82,9 +80,8 @@ TEST_SUITE("DietDecompressor") {
         auto compressed = read_file(test::diet_dir() / "sprites.c");
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         diet_decompressor decompressor;
 
@@ -108,9 +105,8 @@ TEST_SUITE("DietDecompressor") {
         auto compressed = read_file(test::diet_dir() / "sprites.c");
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         diet_decompressor decompressor;
         std::vector<u8> output(expected.size() + 1024);
@@ -145,9 +141,8 @@ TEST_SUITE("DietDecompressor") {
         auto compressed = read_file(test::diet_dir() / "sprites.c");
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
-        if (compressed.empty() || expected.empty()) {
-            return;
-        }
+        REQUIRE(!compressed.empty());
+        REQUIRE(!expected.empty());
 
         diet_decompressor decompressor;
         std::vector<u8> full_output;

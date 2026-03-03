@@ -38,9 +38,7 @@ TEST_SUITE("StuffItArchive") {
 
     TEST_CASE("Open old format archive") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -54,9 +52,7 @@ TEST_SUITE("StuffItArchive") {
 
     TEST_CASE("Open v5 format archive") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit651_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -92,9 +88,7 @@ TEST_SUITE("StuffItArchive") {
 
     TEST_CASE("Extract uncompressed file from old format") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -103,25 +97,22 @@ TEST_SUITE("StuffItArchive") {
         const auto& files = archive->files();
 
         // Find Test Text (uncompressed data fork)
+        bool found = false;
         for (const auto& f : files) {
             if (f.name == "Test Text" && f.uncompressed_size == 11) {
+                found = true;
                 auto extract_result = archive->extract(f);
-                if (extract_result.has_value()) {
-                    CHECK(extract_result->size() == f.uncompressed_size);
-                } else {
-                    auto msg = extract_result.error().message();
-                    (void)msg;
-                }
+                REQUIRE(extract_result.has_value());
+                CHECK(extract_result->size() == f.uncompressed_size);
                 break;
             }
         }
+        CHECK(found);
     }
 
     TEST_CASE("Extract method 13 (LZ+Huffman) compressed file") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -130,25 +121,22 @@ TEST_SUITE("StuffItArchive") {
         const auto& files = archive->files();
 
         // Try to extract files that use method 13 compression
+        bool found = false;
         for (const auto& f : files) {
             if (f.name == "testfile.jpg" && f.uncompressed_size == 220) {
+                found = true;
                 auto extract_result = archive->extract(f);
-                if (extract_result.has_value()) {
-                    CHECK(extract_result->size() == f.uncompressed_size);
-                } else {
-                    auto msg = extract_result.error().message();
-                    (void)msg;
-                }
+                REQUIRE(extract_result.has_value());
+                CHECK(extract_result->size() == f.uncompressed_size);
                 break;
             }
         }
+        CHECK(found);
     }
 
     TEST_CASE("Extract method 13 with dynamic tables (code_type 0)") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -157,21 +145,22 @@ TEST_SUITE("StuffItArchive") {
         const auto& files = archive->files();
 
         // testfile.PICT uses method 13 with code_type=0 (dynamic tables)
+        bool found = false;
         for (const auto& f : files) {
             if (f.name == "testfile.PICT" && f.uncompressed_size == 2694) {
+                found = true;
                 auto extract_result = archive->extract(f);
                 REQUIRE(extract_result.has_value());
                 CHECK(extract_result->size() == f.uncompressed_size);
                 break;
             }
         }
+        CHECK(found);
     }
 
     TEST_CASE("Extract method 15 (Arsenic) compressed file from v5 format") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit651_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -181,25 +170,22 @@ TEST_SUITE("StuffItArchive") {
 
         // Try to extract files that use Arsenic compression (method 15)
         // testfile.PICT uses method 15
+        bool found = false;
         for (const auto& f : files) {
             if (f.name == "testfile.PICT" && f.uncompressed_size == 2694) {
+                found = true;
                 auto extract_result = archive->extract(f);
-                if (extract_result.has_value()) {
-                    CHECK(extract_result->size() == f.uncompressed_size);
-                } else {
-                    auto msg = extract_result.error().message();
-                    (void)msg;
-                }
+                REQUIRE(extract_result.has_value());
+                CHECK(extract_result->size() == f.uncompressed_size);
                 break;
             }
         }
+        CHECK(found);
     }
 
     TEST_CASE("Extract all files from v5 format") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit651_dlx.mac9.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -213,20 +199,15 @@ TEST_SUITE("StuffItArchive") {
             if (f.uncompressed_size == 0) continue;  // Skip empty files
 
             auto extract_result = archive->extract(f);
-            if (extract_result.has_value()) {
-                extracted_count++;
-            } else {
-                auto msg = extract_result.error().message();
-                (void)msg;
-            }
+            REQUIRE(extract_result.has_value());
+            extracted_count++;
         }
+        CHECK(extracted_count > 0);
     }
 
     TEST_CASE("Extract method 2 (LZW) compressed files from old format") {
         auto data = read_file(test::stuffit_dir() / "testfile_lzw.sit");
-        if (data.empty()) {
-            return;
-        }
+        REQUIRE(!data.empty());
 
         auto result = stuffit_archive::open(data);
         REQUIRE(result.has_value());
@@ -246,11 +227,7 @@ TEST_SUITE("StuffItArchive") {
             if (f.is_directory) continue;
 
             auto extract_result = archive->extract(f);
-            if (!extract_result.has_value()) {
-                auto msg = extract_result.error().message();
-                (void)msg;
-                continue;
-            }
+            REQUIRE(extract_result.has_value());
 
             CHECK(extract_result->size() == f.uncompressed_size);
 
@@ -295,9 +272,7 @@ TEST_SUITE("StuffItArchive") {
 
         SUBCASE("sample_addres.sit - LZW compression") {
             auto data = read_file(test::stuffit_dir() / "sample_addres.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -318,9 +293,7 @@ TEST_SUITE("StuffItArchive") {
 
         SUBCASE("sample_fixer.sit - LZW compression with source code") {
             auto data = read_file(test::stuffit_dir() / "sample_fixer.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -328,8 +301,10 @@ TEST_SUITE("StuffItArchive") {
             auto& archive = *result;
             const auto& files = archive->files();
 
+            bool found = false;
             for (const auto& f : files) {
                 if (f.name == "fixer.c") {
+                    found = true;
                     auto extract_result = archive->extract(f);
                     REQUIRE(extract_result.has_value());
                     CHECK(extract_result->size() == 2909);
@@ -338,15 +313,15 @@ TEST_SUITE("StuffItArchive") {
                                        std::min(size_t(100), extract_result->size()));
                     CHECK((content.find("#include") != std::string::npos ||
                            content.find("/*") != std::string::npos));
+                    break;
                 }
             }
+            CHECK(found);
         }
 
         SUBCASE("sample_clrmg131.sit - mixed compression") {
             auto data = read_file(test::stuffit_dir() / "sample_clrmg131.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -371,9 +346,7 @@ TEST_SUITE("StuffItArchive") {
 
         SUBCASE("test_m0.sit - method 0 (stored)") {
             auto data = read_file(test::stuffit_dir() / "test_m0.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -395,9 +368,7 @@ TEST_SUITE("StuffItArchive") {
 
         SUBCASE("test_m13.sit - method 13 (LZ+Huffman)") {
             auto data = read_file(test::stuffit_dir() / "test_m13.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -419,9 +390,7 @@ TEST_SUITE("StuffItArchive") {
 
         SUBCASE("test_deflate.sit - method 14 (Deflate)") {
             auto data = read_file(test::stuffit_dir() / "test_deflate.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -444,9 +413,7 @@ TEST_SUITE("StuffItArchive") {
 
         SUBCASE("test_complex.sit - complex archive with folders") {
             auto data = read_file(test::stuffit_dir() / "test_complex.sit");
-            if (data.empty()) {
-                return;
-            }
+            REQUIRE(!data.empty());
 
             auto result = stuffit_archive::open(data);
             REQUIRE(result.has_value());
@@ -464,7 +431,7 @@ TEST_SUITE("StuffItArchive") {
                 } else {
                     file_count++;
                     auto extract_result = archive->extract(f);
-                    (void)extract_result;
+                    REQUIRE(extract_result.has_value());
                 }
             }
 
