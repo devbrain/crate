@@ -1,6 +1,7 @@
 #include <crate/formats/lha.hh>
 #include <crate/compression/lha_new.hh>
 #include <crate/core/crc.hh>
+#include <crate/core/path.hh>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -1395,14 +1396,17 @@ void_result_t lha_archive::parse() {
         const auto& [header, data_offset, next_pos] = *header_result;
 
         if (!header.is_directory()) {
-            file_entry entry;
-            entry.name = header.full_path();
-            entry.uncompressed_size = header.original_size;
-            entry.compressed_size = header.compressed_size;
-            entry.folder_index = static_cast<u32>(m_pimpl->members_.size());
-            entry.folder_offset = data_offset;
+            auto safe_name = sanitize_path(header.full_path());
+            if (!safe_name.empty()) {
+                file_entry entry;
+                entry.name = std::move(safe_name);
+                entry.uncompressed_size = header.original_size;
+                entry.compressed_size = header.compressed_size;
+                entry.folder_index = static_cast<u32>(m_pimpl->members_.size());
+                entry.folder_offset = data_offset;
 
-            m_pimpl->files_.push_back(entry);
+                m_pimpl->files_.push_back(entry);
+            }
         }
 
         m_pimpl->members_.push_back(header);

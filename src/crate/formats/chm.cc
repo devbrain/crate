@@ -1,5 +1,6 @@
 #include <crate/formats/chm.hh>
 #include <crate/compression/lzx.hh>
+#include <crate/core/path.hh>
 
 namespace crate {
     namespace chm {
@@ -126,10 +127,21 @@ namespace crate {
             return crate::make_unexpected(dec.error());
         }
 
-        const u8* comp_base = m_pimpl->data_.data() + m_pimpl->compressed_offset_;
         size_t comp_total = static_cast<size_t>(m_pimpl->compressed_length_);
         size_t uncomp_total = static_cast<size_t>(m_pimpl->uncompressed_length_);
 
+        if (m_pimpl->compressed_offset_ + comp_total > m_pimpl->data_.size()) {
+            return crate::make_unexpected(error{error_code::TruncatedArchive,
+                "Compressed content extends beyond archive data"});
+        }
+
+        constexpr size_t MAX_UNCOMPRESSED = 1ULL << 30; // 1 GB
+        if (uncomp_total > MAX_UNCOMPRESSED) {
+            return crate::make_unexpected(error{error_code::AllocationLimitExceeded,
+                "Uncompressed size exceeds maximum allowed"});
+        }
+
+        const u8* comp_base = m_pimpl->data_.data() + m_pimpl->compressed_offset_;
         m_pimpl->decompressed_content_.resize(uncomp_total);
 
         auto& reset_table = m_pimpl->reset_table_;
@@ -287,10 +299,7 @@ namespace crate {
 
             auto dest = dest_dir / entry.name;
             auto result = extract(entry, dest);
-            if (!result) {
-                // Skip files that can't be extracted (compressed content)
-                continue;
-            }
+            if (!result) return result;
         }
 
         return {};
@@ -458,13 +467,16 @@ namespace crate {
                     // Also add to public file list (skip meta files and directories)
                     if (entry.length > 0 && !name.empty() &&
                         name[0] == '/' && name.back() != '/') {
-                        file_entry fe;
-                        fe.name = name.substr(1); // Remove leading '/'
-                        fe.uncompressed_size = entry.length;
-                        fe.compressed_size = 0;
-                        fe.folder_index = entry.section;
-                        fe.folder_offset = entry.offset;
-                        m_pimpl->files_.push_back(fe);
+                        auto safe_name = sanitize_path(name.substr(1));
+                        if (!safe_name.empty()) {
+                            file_entry fe;
+                            fe.name = std::move(safe_name);
+                            fe.uncompressed_size = entry.length;
+                            fe.compressed_size = 0;
+                            fe.folder_index = entry.section;
+                            fe.folder_offset = entry.offset;
+                            m_pimpl->files_.push_back(fe);
+                        }
                     }
                 }
 
