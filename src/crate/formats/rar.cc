@@ -143,14 +143,14 @@ void_result_t rar_archive::decrypt_data(const rar::file_info& member, byte_vecto
         pimpl_->decryptor->init_rar4(pimpl_->password_, member.salt.data());
     }
 
-    // Ensure data is block-aligned (AES block size = 16)
-    size_t aligned_size = data.size() & ~size_t(15);
-    if (aligned_size == 0) {
-        return crate::make_unexpected(error{error_code::CorruptData, "Encrypted data too small"});
+    // AES requires 16-byte block alignment
+    if (data.size() < 16 || (data.size() & 15) != 0) {
+        return crate::make_unexpected(error{error_code::CorruptData,
+            "Encrypted data is not block-aligned (must be multiple of 16 bytes)"});
     }
 
     // Decrypt in-place
-    size_t decrypted_size = pimpl_->decryptor->decrypt_final(data.data(), aligned_size);
+    size_t decrypted_size = pimpl_->decryptor->decrypt_final(data.data(), data.size());
 
     // Trim to decrypted size (removes padding)
     if (decrypted_size < data.size()) {

@@ -73,14 +73,18 @@ TEST_SUITE("ChmArchive - Basic") {
 
         chm_data[4] = 3; // version
 
-        // header_len at offset 8
-        *reinterpret_cast<u32*>(&chm_data[8]) = 96;
+        // header_len at offset 8 (u32 LE = 96)
+        chm_data[8] = 96; chm_data[9] = 0; chm_data[10] = 0; chm_data[11] = 0;
 
         // Section 1 offset - point to where ITSP would be
-        *reinterpret_cast<u64*>(&chm_data[56]) = 0;    // section0 offset
-        *reinterpret_cast<u64*>(&chm_data[64]) = 0;    // section0 length
-        *reinterpret_cast<u64*>(&chm_data[72]) = 100;  // section1 offset
-        *reinterpret_cast<u64*>(&chm_data[80]) = 100;  // section1 length
+        // section0 offset (u64 LE = 0) — already zero-initialized
+        // section0 length (u64 LE = 0) — already zero-initialized
+        // section1 offset (u64 LE = 100)
+        chm_data[72] = 100; chm_data[73] = 0; chm_data[74] = 0; chm_data[75] = 0;
+        chm_data[76] = 0; chm_data[77] = 0; chm_data[78] = 0; chm_data[79] = 0;
+        // section1 length (u64 LE = 100)
+        chm_data[80] = 100; chm_data[81] = 0; chm_data[82] = 0; chm_data[83] = 0;
+        chm_data[84] = 0; chm_data[85] = 0; chm_data[86] = 0; chm_data[87] = 0;
 
         // Put ITSP at offset 100
         if (chm_data.size() > 104) {
