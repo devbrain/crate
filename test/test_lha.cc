@@ -38,7 +38,7 @@ namespace {
 
         REQUIRE(std::filesystem::exists(archive_dir));
 
-        for (const auto& entry : std::filesystem::directory_iterator(archive_dir)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(archive_dir)) {
             auto ext = entry.path().extension().string();
             if (ext != ".lzh" && ext != ".lha" && ext != ".lzs" && ext != ".pma") {
                 continue;
@@ -249,9 +249,10 @@ TEST_SUITE("LhaArchive - Archive Tests") {
     }
 
     TEST_CASE("generated - Generated test archives") {
-        // Archives are in subdirectories (lzs/, pm1/), not top-level
+        // Archives are in subdirectories (lzs/, pm1/)
         auto result = test_archive_directory("generated");
         CHECK(result.fail == 0);
+        CHECK(result.success > 0);
     }
 
     TEST_CASE("regression - Regression tests") {

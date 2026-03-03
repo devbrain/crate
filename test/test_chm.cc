@@ -558,7 +558,7 @@ TEST_SUITE("ChmArchive - Content Validation") {
         FAIL("Did not find second.hhc file");
     }
 
-    TEST_CASE("Validate chm.css content (LZX compressed)" * doctest::may_fail()) {
+    TEST_CASE("Validate chm.css content (LZX compressed)") {
         auto chm_path = test::chm_dir() / "putty.chm";
         auto ref_path = test::chm_dir() / "reference" / "putty" / "chm.css";
         REQUIRE(std::filesystem::exists(chm_path));
@@ -576,20 +576,19 @@ TEST_SUITE("ChmArchive - Content Validation") {
         for (const auto& f : files) {
             if (f.name == "chm.css") {
                 auto extract_result = archive->extract(f);
-                CHECK(extract_result.has_value());
-                if (extract_result.has_value()) {
-                    auto reference = read_reference_file(ref_path);
-                    REQUIRE(!reference.empty());
-                    CHECK(extract_result->size() == reference.size());
-                    CHECK(*extract_result == reference);
-                }
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
                 return;
             }
         }
         FAIL("Did not find chm.css file");
     }
 
-    TEST_CASE("Validate index.html content (LZX compressed)" * doctest::may_fail()) {
+    TEST_CASE("Validate index.html content (LZX compressed)") {
         auto chm_path = test::chm_dir() / "putty.chm";
         auto ref_path = test::chm_dir() / "reference" / "putty" / "index.html";
         REQUIRE(std::filesystem::exists(chm_path));
@@ -607,13 +606,12 @@ TEST_SUITE("ChmArchive - Content Validation") {
         for (const auto& f : files) {
             if (f.name == "index.html") {
                 auto extract_result = archive->extract(f);
-                CHECK(extract_result.has_value());
-                if (extract_result.has_value()) {
-                    auto reference = read_reference_file(ref_path);
-                    REQUIRE(!reference.empty());
-                    CHECK(extract_result->size() == reference.size());
-                    CHECK(*extract_result == reference);
-                }
+                REQUIRE(extract_result.has_value());
+
+                auto reference = read_reference_file(ref_path);
+                REQUIRE(!reference.empty());
+                CHECK(extract_result->size() == reference.size());
+                CHECK(*extract_result == reference);
                 return;
             }
         }

@@ -188,12 +188,21 @@ TEST_SUITE("RncDecompressor") {
         CHECK(!result.has_value());
     }
 
-    TEST_CASE("CRC calculation") {
-        // Test known CRC values
-        std::vector<byte> data = {0x48, 0x65, 0x6c, 0x6c, 0x6f}; // "Hello"
-        u16 crc = rnc::calculate_crc(data);
-        // Just verify it doesn't crash and produces a consistent result
-        CHECK(crc == rnc::calculate_crc(data));
+    TEST_CASE("CRC calculation - known CRC-16/ARC vectors") {
+        // Empty input
+        CHECK(rnc::calculate_crc({}) == 0x0000);
+
+        // "Hello"
+        std::vector<byte> hello = {0x48, 0x65, 0x6c, 0x6c, 0x6f};
+        CHECK(rnc::calculate_crc(hello) == 0xF353);
+
+        // "123456789" — standard CRC-16/ARC check value
+        std::vector<byte> digits = {0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39};
+        CHECK(rnc::calculate_crc(digits) == 0xBB3D);
+
+        // Single byte 0xFF
+        std::vector<byte> ff = {0xFF};
+        CHECK(rnc::calculate_crc(ff) == 0x4040);
     }
 
     TEST_CASE("Decompress large method 1") {
