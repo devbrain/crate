@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/formats/floppy.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <fstream>
 #include <set>
 
@@ -44,10 +45,8 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
         const auto& files = (*image)->files();
         CHECK(files.size() > 0);
 
-        MESSAGE("Found " << files.size() << " files:");
         std::set<std::string> filenames;
         for (const auto& f : files) {
-            MESSAGE("  " << f.name << " (" << f.uncompressed_size << " bytes)");
             filenames.insert(f.name);
         }
 
@@ -69,10 +68,6 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
         const auto& files = (*image)->files();
         CHECK(files.size() > 0);
 
-        MESSAGE("Found " << files.size() << " files:");
-        for (const auto& f : files) {
-            MESSAGE("  " << f.name << " (" << f.uncompressed_size << " bytes)");
-        }
     }
 
     TEST_CASE("Disk 3 - BGI, Demos, Doc") {
@@ -88,10 +83,6 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
         const auto& files = (*image)->files();
         CHECK(files.size() > 0);
 
-        MESSAGE("Found " << files.size() << " files:");
-        for (const auto& f : files) {
-            MESSAGE("  " << f.name << " (" << f.uncompressed_size << " bytes)");
-        }
     }
 
     TEST_CASE("Extract file from Disk 1") {
@@ -111,7 +102,6 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
         }
 
         REQUIRE(target != nullptr);
-        MESSAGE("Extracting: " << target->name << " (" << target->uncompressed_size << " bytes)");
 
         auto content = (*image)->extract(*target);
         REQUIRE(content.has_value());
@@ -144,12 +134,10 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
                 CHECK(content->size() == f.uncompressed_size);
                 extracted++;
             } else {
-                MESSAGE("Failed to extract: " << f.name << " - " << content.error().message());
                 failed++;
             }
         }
 
-        MESSAGE("Extracted " << extracted << " files, " << failed << " failed");
         CHECK(failed == 0);
     }
 }

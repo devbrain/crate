@@ -83,7 +83,6 @@ namespace {
             ++checked;
         }
         REQUIRE_MESSAGE(checked > 0, label << ": no files were verified — test is vacuous");
-        MESSAGE(label << ": verified " << checked << " files via extract_stream");
     }
 
     // Helper: verify open(path) and open(istream) produce identical results.
@@ -121,7 +120,6 @@ namespace {
             ++compared;
         }
         REQUIRE_MESSAGE(compared > 0, label << ": no files compared — test is vacuous");
-        MESSAGE(label << ": compared " << compared << " files path-vs-istream");
     }
 
     // A streambuf that is non-seekable (returns -1 for tellg).
@@ -845,10 +843,6 @@ TEST_SUITE("Decompressor istream factories") {
 
         auto result = dec.decompress_some(input, out, true);
         REQUIRE(result.has_value());
-
-        MESSAGE("bytes_read=" << result->bytes_read
-                << " bytes_written=" << result->bytes_written
-                << " finished=" << result->finished());
 
         CHECK(result->bytes_written == expected.size());
         CHECK(result->finished());

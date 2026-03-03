@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/compression/rnc.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -34,7 +35,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -45,9 +45,6 @@ TEST_SUITE("RncDecompressor") {
         std::vector<u8> output(expected.size() + 1024);
 
         auto result = decompressor.decompress(compressed, output);
-        if (!result.has_value()) {
-            MESSAGE("Error: " << result.error().message());
-        }
         REQUIRE(result.has_value());
         CHECK(*result == expected.size());
 
@@ -60,7 +57,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -71,9 +67,6 @@ TEST_SUITE("RncDecompressor") {
         std::vector<u8> output(expected.size() + 1024);
 
         auto result = decompressor.decompress(compressed, output);
-        if (!result.has_value()) {
-            MESSAGE("Error: " << result.error().message());
-        }
         REQUIRE(result.has_value());
         CHECK(*result == expected.size());
 
@@ -86,7 +79,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -114,7 +106,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -132,10 +123,6 @@ TEST_SUITE("RncDecompressor") {
             mutable_byte_span out_chunk(output.data() + out_pos, output.size() - out_pos);
 
             auto result = decompressor.decompress_some(in_chunk, out_chunk, is_last);
-            if (!result.has_value()) {
-                MESSAGE("Error: " << result.error().message());
-                MESSAGE("in_pos=" << in_pos << " out_pos=" << out_pos << " chunk_size=" << chunk_size);
-            }
             REQUIRE(result.has_value());
 
             in_pos += result->bytes_read;
@@ -156,7 +143,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_output.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -220,7 +206,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_large.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Large test data not found, skipping");
             return;
         }
 
@@ -231,9 +216,6 @@ TEST_SUITE("RncDecompressor") {
         std::vector<u8> output(expected.size() + 1024);
 
         auto result = decompressor.decompress(compressed, output);
-        if (!result.has_value()) {
-            MESSAGE("Error: " << result.error().message());
-        }
         REQUIRE(result.has_value());
         CHECK(*result == expected.size());
 
@@ -246,7 +228,6 @@ TEST_SUITE("RncDecompressor") {
         auto expected = read_file(test::rnc_dir() / "expected_large.txt");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Large test data not found, skipping");
             return;
         }
 
@@ -257,9 +238,6 @@ TEST_SUITE("RncDecompressor") {
         std::vector<u8> output(expected.size() + 1024);
 
         auto result = decompressor.decompress(compressed, output);
-        if (!result.has_value()) {
-            MESSAGE("Error: " << result.error().message());
-        }
         REQUIRE(result.has_value());
         CHECK(*result == expected.size());
 

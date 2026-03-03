@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/compression/diet.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -33,7 +34,6 @@ TEST_SUITE("DietDecompressor") {
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -56,7 +56,6 @@ TEST_SUITE("DietDecompressor") {
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -84,7 +83,6 @@ TEST_SUITE("DietDecompressor") {
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -111,7 +109,6 @@ TEST_SUITE("DietDecompressor") {
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -129,10 +126,6 @@ TEST_SUITE("DietDecompressor") {
             mutable_byte_span out_chunk(output.data() + out_pos, output.size() - out_pos);
 
             auto result = decompressor.decompress_some(in_chunk, out_chunk, is_last);
-            if (!result.has_value()) {
-                MESSAGE("Error: " << result.error().message());
-                MESSAGE("in_pos=" << in_pos << " out_pos=" << out_pos << " chunk_size=" << chunk_size);
-            }
             REQUIRE(result.has_value());
 
             in_pos += result->bytes_read;
@@ -153,7 +146,6 @@ TEST_SUITE("DietDecompressor") {
         auto expected = read_file(test::diet_dir() / "sprites.d");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 

@@ -36,7 +36,6 @@ TEST_SUITE("ExplodeDecompressor") {
         auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -56,7 +55,6 @@ TEST_SUITE("ExplodeDecompressor") {
         auto expected = read_file(::test::pkware_dir() / "medium.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -76,7 +74,6 @@ TEST_SUITE("ExplodeDecompressor") {
         auto expected = read_file(::test::pkware_dir() / "large.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -96,7 +93,6 @@ TEST_SUITE("ExplodeDecompressor") {
         auto expected = read_file(::test::pkware_dir() / "binary.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -116,7 +112,6 @@ TEST_SUITE("ExplodeDecompressor") {
         auto expected = read_file(::test::pkware_dir() / "no-explicit-end.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -136,7 +131,6 @@ TEST_SUITE("ExplodeDecompressor") {
         auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -186,7 +180,6 @@ TEST_SUITE("ExplodeStreaming") {
         auto expected = read_file(::test::pkware_dir() / "small.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -206,7 +199,6 @@ TEST_SUITE("ExplodeStreaming") {
         auto expected = read_file(::test::pkware_dir() / "no-explicit-end.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -225,7 +217,6 @@ TEST_SUITE("ExplodeStreaming") {
         auto expected = read_file(::test::pkware_dir() / "medium.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 
@@ -245,7 +236,6 @@ TEST_SUITE("ExplodeStreaming") {
         auto expected = read_file(::test::pkware_dir() / "large.decomp");
 
         if (compressed.empty() || expected.empty()) {
-            MESSAGE("Test data not found, skipping");
             return;
         }
 

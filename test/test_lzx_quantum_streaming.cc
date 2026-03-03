@@ -263,7 +263,6 @@ TEST_SUITE("LzxDecompressor - CAB Streaming") {
                 auto result = decompressor.decompress(block.compressed, block_output);
                 if (!result) {
                     // LZX decompression not fully implemented - skip streaming checks
-                    MESSAGE("LZX decompression incomplete (error: ", result.error().message(), ")");
                     return;
                 }
                 REQUIRE(*result == block.uncompressed_size);

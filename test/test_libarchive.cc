@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 #include <crate/test_config.hh>
+#include <array>
 
 #ifdef CRATE_WITH_LIBARCHIVE
 #include <crate/formats/libarchive_archive.hh>
@@ -89,6 +90,5 @@ TEST_SUITE("LibarchiveArchive - Error Handling") {
 #else
 // Provide a dummy test when libarchive is not enabled
 TEST_CASE("Libarchive tests skipped - not compiled with CRATE_WITH_LIBARCHIVE") {
-    MESSAGE("Libarchive support not enabled in build");
 }
 #endif // CRATE_WITH_LIBARCHIVE

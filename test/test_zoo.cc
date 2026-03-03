@@ -3,6 +3,7 @@
 #include <crate/core/crc.hh>
 #include <crate/core/system.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <fstream>
 #include <cstring>
 

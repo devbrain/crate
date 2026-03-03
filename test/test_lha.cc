@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/formats/lha.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <fstream>
 #include <cstring>
 

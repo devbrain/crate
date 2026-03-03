@@ -135,6 +135,4 @@ private:
     size_t window_pos_ = 0;
 };
 
-void ace_lz_debug(bool enable);
-
 }  // namespace crate

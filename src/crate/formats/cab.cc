@@ -107,8 +107,8 @@ namespace {
         size_t folder_size = 0;
         for (const auto& f : pimpl_->files_) {
             if (f.folder_index == entry.folder_index) {
-                folder_size = std::max(folder_size,
-                                       f.folder_offset + f.uncompressed_size);
+                auto end = f.folder_offset + f.uncompressed_size;
+                if (end > folder_size) folder_size = end;
             }
         }
 

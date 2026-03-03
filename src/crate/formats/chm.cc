@@ -1,6 +1,5 @@
 #include <crate/formats/chm.hh>
 #include <crate/compression/lzx.hh>
-#include <cstdio>
 
 namespace crate {
     namespace chm {
@@ -137,32 +136,10 @@ namespace crate {
         size_t comp_len = static_cast<size_t>(m_pimpl->compressed_length_);
         if (comp_len >= 6 && comp_start[0] == 0x10 && comp_start[1] == 0x10 &&
             comp_start[2] == 0x03 && comp_start[3] == 0x00) {
-            fprintf(stderr, "Skipping 6-byte CHM LZX header\n");
             comp_start += 6;
             comp_len -= 6;
         }
         byte_span compressed(comp_start, comp_len);
-
-        // Debug: show first 32 bytes of compressed data
-        fprintf(stderr, "CHM compressed data offset=0x%llx len=%llu uncompressed=%llu first 32 bytes:\n",
-            static_cast<unsigned long long>(m_pimpl->compressed_offset_),
-            static_cast<unsigned long long>(m_pimpl->compressed_length_),
-            static_cast<unsigned long long>(m_pimpl->uncompressed_length_));
-        fprintf(stderr, "LZXC: version=%u reset_interval=%u window_size=%u cache_size=%u window_bits=%u\n",
-            m_pimpl->lzxc_.version, m_pimpl->lzxc_.reset_interval,
-            m_pimpl->lzxc_.window_size, m_pimpl->lzxc_.cache_size,
-            m_pimpl->lzx_window_bits_);
-        fprintf(stderr, "Reset table: %zu entries, block_size=%llu\n",
-            m_pimpl->reset_table_.size(),
-            static_cast<unsigned long long>(m_pimpl->reset_block_size_));
-        for (size_t i = 0; i < m_pimpl->reset_table_.size() && i < 5; i++) {
-            fprintf(stderr, "  reset[%zu] = %llu\n", i, static_cast<unsigned long long>(m_pimpl->reset_table_[i]));
-        }
-        for (size_t i = 0; i < 32 && i < compressed.size(); i++) {
-            fprintf(stderr, "%02x ", compressed[i]);
-            if ((i + 1) % 16 == 0) fprintf(stderr, "\n");
-        }
-        fprintf(stderr, "\n");
 
         m_pimpl->decompressed_content_.resize(static_cast<size_t>(m_pimpl->uncompressed_length_));
 
@@ -455,19 +432,6 @@ namespace crate {
 
     void_result_t chm_archive::parse_reset_table() {
         // Find and parse compression metadata from section 0 entries
-        static int parse_debug = 0;
-        if (parse_debug < 3) {
-            fprintf(stderr, "Section 0 entries:\n");
-            for (const auto& e : m_pimpl->internal_entries_) {
-                if (e.section == 0) {
-                    fprintf(stderr, "  '%s' offset=%llu len=%llu\n",
-                        e.name.c_str(),
-                        static_cast<unsigned long long>(e.offset),
-                        static_cast<unsigned long long>(e.length));
-                }
-            }
-            parse_debug++;
-        }
         for (const auto& entry : m_pimpl->internal_entries_) {
             if (entry.section != 0) continue;
 
@@ -508,12 +472,6 @@ namespace crate {
                 m_pimpl->uncompressed_length_ = read_u64_le(p + 16);
                 m_pimpl->compressed_length_ = read_u64_le(p + 24);
                 m_pimpl->reset_block_size_ = read_u64_le(p + 32);
-                fprintf(stderr, "ResetTable parsed: num_entries=%u entry_size=%u header_len=%u\n",
-                    num_entries, entry_size, header_len);
-                fprintf(stderr, "  uncompressed=%llu compressed=%llu block_size=%llu\n",
-                    static_cast<unsigned long long>(m_pimpl->uncompressed_length_),
-                    static_cast<unsigned long long>(m_pimpl->compressed_length_),
-                    static_cast<unsigned long long>(m_pimpl->reset_block_size_));
 
                 // Read reset table entries
                 m_pimpl->reset_table_.clear();
@@ -527,11 +485,6 @@ namespace crate {
                 m_pimpl->compressed_offset_ = file_offset;
                 // Note: Don't overwrite compressed_length_ here - use the value from ResetTable
                 // entry.length may be larger (allocated space) vs actual compressed size
-                fprintf(stderr, "Content entry: section=%u entry.offset=0x%llx entry.length=%llu file_offset=0x%llx\n",
-                    entry.section,
-                    static_cast<unsigned long long>(entry.offset),
-                    static_cast<unsigned long long>(entry.length),
-                    static_cast<unsigned long long>(file_offset));
             }
         }
         return {};

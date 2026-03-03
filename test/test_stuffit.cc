@@ -39,7 +39,6 @@ TEST_SUITE("StuffItArchive") {
     TEST_CASE("Open old format archive") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -51,17 +50,11 @@ TEST_SUITE("StuffItArchive") {
 
         const auto& files = archive->files();
         CHECK(!files.empty());
-
-        MESSAGE("Found ", files.size(), " files in old format archive");
-        for (const auto& f : files) {
-            MESSAGE("  ", f.name, " (", f.uncompressed_size, " bytes)");
-        }
     }
 
     TEST_CASE("Open v5 format archive") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit651_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -73,11 +66,6 @@ TEST_SUITE("StuffItArchive") {
 
         const auto& files = archive->files();
         CHECK(!files.empty());
-
-        MESSAGE("Found ", files.size(), " files in v5 format archive");
-        for (const auto& f : files) {
-            MESSAGE("  ", f.name, " (", f.uncompressed_size, " bytes)");
-        }
     }
 
     TEST_CASE("Signature detection - old format") {
@@ -105,7 +93,6 @@ TEST_SUITE("StuffItArchive") {
     TEST_CASE("Extract uncompressed file from old format") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -121,10 +108,9 @@ TEST_SUITE("StuffItArchive") {
                 auto extract_result = archive->extract(f);
                 if (extract_result.has_value()) {
                     CHECK(extract_result->size() == f.uncompressed_size);
-                    MESSAGE("Successfully extracted uncompressed file: ", f.name);
                 } else {
                     auto msg = extract_result.error().message();
-                    MESSAGE("Extraction failed: ", msg);
+                    (void)msg;
                 }
                 break;
             }
@@ -134,7 +120,6 @@ TEST_SUITE("StuffItArchive") {
     TEST_CASE("Extract method 13 (LZ+Huffman) compressed file") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -150,10 +135,9 @@ TEST_SUITE("StuffItArchive") {
                 auto extract_result = archive->extract(f);
                 if (extract_result.has_value()) {
                     CHECK(extract_result->size() == f.uncompressed_size);
-                    MESSAGE("Successfully extracted method 13 file: ", f.name);
                 } else {
                     auto msg = extract_result.error().message();
-                    MESSAGE("Extraction failed: ", msg);
+                    (void)msg;
                 }
                 break;
             }
@@ -163,7 +147,6 @@ TEST_SUITE("StuffItArchive") {
     TEST_CASE("Extract method 13 with dynamic tables (code_type 0)") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit45_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -179,7 +162,6 @@ TEST_SUITE("StuffItArchive") {
                 auto extract_result = archive->extract(f);
                 REQUIRE(extract_result.has_value());
                 CHECK(extract_result->size() == f.uncompressed_size);
-                MESSAGE("Successfully extracted method 13 dynamic tables file: ", f.name);
                 break;
             }
         }
@@ -188,7 +170,6 @@ TEST_SUITE("StuffItArchive") {
     TEST_CASE("Extract method 15 (Arsenic) compressed file from v5 format") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit651_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -205,10 +186,9 @@ TEST_SUITE("StuffItArchive") {
                 auto extract_result = archive->extract(f);
                 if (extract_result.has_value()) {
                     CHECK(extract_result->size() == f.uncompressed_size);
-                    MESSAGE("Successfully extracted Arsenic file: ", f.name);
                 } else {
                     auto msg = extract_result.error().message();
-                    MESSAGE("Arsenic extraction failed: ", msg);
+                    (void)msg;
                 }
                 break;
             }
@@ -218,7 +198,6 @@ TEST_SUITE("StuffItArchive") {
     TEST_CASE("Extract all files from v5 format") {
         auto data = read_file(test::stuffit_dir() / "testfile.stuffit651_dlx.mac9.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -236,20 +215,16 @@ TEST_SUITE("StuffItArchive") {
             auto extract_result = archive->extract(f);
             if (extract_result.has_value()) {
                 extracted_count++;
-                MESSAGE("Extracted: ", f.name, " (", extract_result->size(), " bytes)");
             } else {
                 auto msg = extract_result.error().message();
-                MESSAGE("Failed: ", f.name, " - ", msg);
+                (void)msg;
             }
         }
-
-        MESSAGE("Successfully extracted ", extracted_count, " files");
     }
 
     TEST_CASE("Extract method 2 (LZW) compressed files from old format") {
         auto data = read_file(test::stuffit_dir() / "testfile_lzw.sit");
         if (data.empty()) {
-            MESSAGE("Test file not found, skipping");
             return;
         }
 
@@ -262,11 +237,6 @@ TEST_SUITE("StuffItArchive") {
         const auto& files = archive->files();
         REQUIRE(!files.empty());
 
-        MESSAGE("Found ", files.size(), " files in LZW archive");
-        for (const auto& f : files) {
-            MESSAGE("  ", f.name, " (", f.uncompressed_size, " bytes, compressed: ", f.compressed_size, ")");
-        }
-
         // Extract each file and verify contents
         bool found_test_lzw = false;
         bool found_repeated = false;
@@ -278,12 +248,11 @@ TEST_SUITE("StuffItArchive") {
             auto extract_result = archive->extract(f);
             if (!extract_result.has_value()) {
                 auto msg = extract_result.error().message();
-                MESSAGE("Extraction failed for ", f.name, ": ", msg);
+                (void)msg;
                 continue;
             }
 
             CHECK(extract_result->size() == f.uncompressed_size);
-            MESSAGE("Successfully extracted: ", f.name);
 
             // Verify specific file contents
             if (f.name == "test_lzw.txt") {
@@ -327,7 +296,6 @@ TEST_SUITE("StuffItArchive") {
         SUBCASE("sample_addres.sit - LZW compression") {
             auto data = read_file(test::stuffit_dir() / "sample_addres.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -345,14 +313,12 @@ TEST_SUITE("StuffItArchive") {
                 auto extract_result = archive->extract(f);
                 REQUIRE(extract_result.has_value());
                 CHECK(extract_result->size() == f.uncompressed_size);
-                MESSAGE("Extracted: ", f.name, " (", extract_result->size(), " bytes)");
             }
         }
 
         SUBCASE("sample_fixer.sit - LZW compression with source code") {
             auto data = read_file(test::stuffit_dir() / "sample_fixer.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -379,7 +345,6 @@ TEST_SUITE("StuffItArchive") {
         SUBCASE("sample_clrmg131.sit - mixed compression") {
             auto data = read_file(test::stuffit_dir() / "sample_clrmg131.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -395,7 +360,6 @@ TEST_SUITE("StuffItArchive") {
                 auto extract_result = archive->extract(f);
                 if (extract_result.has_value()) {
                     extracted++;
-                    MESSAGE("Extracted: ", f.name, " (", extract_result->size(), " bytes)");
                 }
             }
             CHECK(extracted >= 1);
@@ -408,7 +372,6 @@ TEST_SUITE("StuffItArchive") {
         SUBCASE("test_m0.sit - method 0 (stored)") {
             auto data = read_file(test::stuffit_dir() / "test_m0.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -433,7 +396,6 @@ TEST_SUITE("StuffItArchive") {
         SUBCASE("test_m13.sit - method 13 (LZ+Huffman)") {
             auto data = read_file(test::stuffit_dir() / "test_m13.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -458,7 +420,6 @@ TEST_SUITE("StuffItArchive") {
         SUBCASE("test_deflate.sit - method 14 (Deflate)") {
             auto data = read_file(test::stuffit_dir() / "test_deflate.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -484,7 +445,6 @@ TEST_SUITE("StuffItArchive") {
         SUBCASE("test_complex.sit - complex archive with folders") {
             auto data = read_file(test::stuffit_dir() / "test_complex.sit");
             if (data.empty()) {
-                MESSAGE("Test file not found, skipping");
                 return;
             }
 
@@ -495,22 +455,16 @@ TEST_SUITE("StuffItArchive") {
             CHECK(archive->format() == stuffit::format_version::v5_format);
 
             const auto& files = archive->files();
-            MESSAGE("Found ", files.size(), " entries in complex archive");
 
             size_t file_count = 0;
             size_t dir_count = 0;
             for (const auto& f : files) {
                 if (f.is_directory) {
                     dir_count++;
-                    MESSAGE("[DIR] ", f.name);
                 } else {
                     file_count++;
                     auto extract_result = archive->extract(f);
-                    if (extract_result.has_value()) {
-                        MESSAGE("  ", f.name, " (", extract_result->size(), " bytes) - OK");
-                    } else {
-                        MESSAGE("  ", f.name, " - FAILED: ", extract_result.error().message());
-                    }
+                    (void)extract_result;
                 }
             }
 

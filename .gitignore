@@ -28,6 +28,7 @@ out/
 *.dylib
 *.dll
 *.exe
+!testdata/**/*.exe
 
 # CMake
 CMakeCache.txt

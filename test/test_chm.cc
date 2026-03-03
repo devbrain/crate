@@ -270,7 +270,6 @@ TEST_SUITE("ChmArchive - Functional Tests") {
         }
         CHECK(has_system);
         CHECK(has_hhc);
-        MESSAGE("main.chm parsed successfully with ", files.size(), " files");
     }
 
     TEST_CASE("Open and list second.chm") {
@@ -306,7 +305,6 @@ TEST_SUITE("ChmArchive - Functional Tests") {
         }
         CHECK(has_system);
         CHECK(has_hhc);
-        MESSAGE("second.chm parsed successfully with ", files.size(), " files");
     }
 
     TEST_CASE("Open and list putty.chm") {
@@ -353,7 +351,6 @@ TEST_SUITE("ChmArchive - Functional Tests") {
         CHECK(has_index);
         CHECK(has_css);
         CHECK(html_count > 400);  // Many HTML help pages
-        MESSAGE("putty.chm parsed successfully with ", files.size(), " files (", html_count, " HTML)");
     }
 
     TEST_CASE("Extract uncompressed section 0 file (#SYSTEM)") {
@@ -375,7 +372,6 @@ TEST_SUITE("ChmArchive - Functional Tests") {
                 auto extract_result = archive->extract(f);
                 REQUIRE(extract_result.has_value());
                 CHECK(extract_result->size() == f.uncompressed_size);
-                MESSAGE("Extracted #SYSTEM: ", extract_result->size(), " bytes");
                 break;
             }
         }
@@ -402,7 +398,6 @@ TEST_SUITE("ChmArchive - Functional Tests") {
                 CHECK(extract_result.has_value());
                 if (extract_result.has_value()) {
                     CHECK(extract_result->size() == 684);
-                    MESSAGE("Section 1 extraction succeeded, size=", extract_result->size());
                 }
                 break;
             }
@@ -444,7 +439,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("main.chm #SYSTEM content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }
@@ -476,7 +470,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("second.chm #SYSTEM content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }
@@ -508,7 +501,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("putty.chm #SYSTEM content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }
@@ -534,9 +526,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
         for (const auto& f : files) {
             if (f.name == "main.hhc") {
                 auto extract_result = archive->extract(f);
-                if (!extract_result.has_value()) {
-                    MESSAGE("Extract failed: ", extract_result.error().message());
-                }
                 REQUIRE(extract_result.has_value());
 
                 auto reference = read_reference_file(ref_path);
@@ -544,7 +533,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("main.hhc content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }
@@ -576,7 +564,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("second.hhc content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }
@@ -608,7 +595,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("chm.css content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }
@@ -640,7 +626,6 @@ TEST_SUITE("ChmArchive - Content Validation") {
 
                 CHECK(extract_result->size() == reference.size());
                 CHECK(*extract_result == reference);
-                MESSAGE("index.html content matches reference (", reference.size(), " bytes)");
                 return;
             }
         }

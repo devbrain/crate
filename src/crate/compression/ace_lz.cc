@@ -1,11 +1,7 @@
 #include <crate/compression/ace_lz.hh>
 #include <algorithm>
-#include <iostream>
 
 namespace crate {
-
-static bool g_debug = false;  // Set via ace_lz_debug()
-void ace_lz_debug(bool enable) { g_debug = enable; }
 
 void ace_lz_decompressor::init_state() {
     state_ = state::READ_MAIN_TREE_HEADER;
@@ -52,10 +48,6 @@ bool ace_lz_decompressor::try_peek_bits(const byte*& ptr, const byte* end, int n
                       (static_cast<u32>(ptr[1]) << 8) |
                       (static_cast<u32>(ptr[2]) << 16) |
                       (static_cast<u32>(ptr[3]) << 24);
-            if (g_debug) {
-                std::cerr << "Read word 0x" << std::hex << word << std::dec
-                          << " at bits_left=" << bits_left_ << std::endl;
-            }
             ptr += 4;
             // Add word to LSB side of buffer (existing bits stay at MSB)
             bit_buffer_ |= (static_cast<u64>(word) << (32 - bits_left_));
@@ -77,11 +69,6 @@ bool ace_lz_decompressor::try_peek_bits(const byte*& ptr, const byte* end, int n
 
     // Extract n bits from MSB
     out = static_cast<u32>(bit_buffer_ >> (64 - n_unsigned));
-    if (g_debug) {
-        std::cerr << "peek_bits(" << n << ")=" << out
-                  << " buffer=0x" << std::hex << bit_buffer_ << std::dec
-                  << " left=" << bits_left_ << std::endl;
-    }
     return true;
 }
 
@@ -110,20 +97,15 @@ bool ace_lz_decompressor::try_read_huffman_symbol(
     }
 
     if (code >= tree.codes.size()) {
-        if (g_debug) std::cerr << "code " << code << " >= codes.size " << tree.codes.size() << std::endl;
         return false;
     }
 
     symbol = tree.codes[code];
     if (symbol >= tree.widths.size()) {
-        if (g_debug) std::cerr << "symbol " << symbol << " >= widths.size " << tree.widths.size() << std::endl;
         return false;
     }
 
     int bits_consumed = tree.widths[symbol];
-    if (g_debug && state_ == state::READ_MAIN_TREE_WIDTHS) {
-        std::cerr << "[huff] code=" << code << " -> sym=" << symbol << " bits=" << bits_consumed << std::endl;
-    }
     remove_bits(bits_consumed);
     return true;
 }
@@ -312,11 +294,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                     return finalize(decode_status::needs_more_input);
                 }
 
-                if (g_debug) {
-                    std::cerr << "MAIN tree header: num_widths=" << num_widths
-                              << " lower=" << lower_width << " upper=" << upper_width << std::endl;
-                }
-
                 tree_num_widths_ = static_cast<int>(num_widths) + 1;
                 if (tree_num_widths_ > NUMMAINCODES + 1) {
                     tree_num_widths_ = NUMMAINCODES + 1;
@@ -343,22 +320,8 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
             }
 
             case state::BUILD_MAIN_WIDTH_TREE: {
-                if (g_debug) {
-                    std::cerr << "Width widths: ";
-                    for (auto w : tree_width_widths_) std::cerr << static_cast<int>(w) << " ";
-                    std::cerr << std::endl;
-                }
                 auto r = build_huffman_tree(tree_width_widths_, MAXWIDTHWIDTH, width_tree_);
                 if (!r) return crate::make_unexpected(r.error());
-                if (g_debug) {
-                    std::cerr << "Width tree built, codes.size=" << width_tree_.codes.size()
-                              << " max_width=" << width_tree_.max_width << std::endl;
-                    std::cerr << "First 20 codes: ";
-                    for (size_t i = 0; i < std::min<size_t>(20, width_tree_.codes.size()); i++) {
-                        std::cerr << width_tree_.codes[i] << " ";
-                    }
-                    std::cerr << std::endl;
-                }
                 tree_widths_.clear();
                 state_ = state::READ_MAIN_TREE_WIDTHS;
                 break;
@@ -391,25 +354,11 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
             }
 
             case state::BUILD_MAIN_TREE: {
-                if (g_debug) {
-                    std::cerr << "Raw main tree widths (first 30): ";
-                    for (size_t i = 0; i < std::min<size_t>(30, tree_widths_.size()); i++) {
-                        std::cerr << static_cast<int>(tree_widths_[i]) << " ";
-                    }
-                    std::cerr << " ... (total " << tree_widths_.size() << ")" << std::endl;
-                }
                 // Delta decode widths
                 if (tree_upper_width_ > 0) {
                     for (size_t i = 1; i < tree_widths_.size(); i++) {
                         tree_widths_[i] = static_cast<u8>((tree_widths_[i] + tree_widths_[i - 1]) % tree_upper_width_);
                     }
-                }
-                if (g_debug) {
-                    std::cerr << "After delta decode (first 30): ";
-                    for (size_t i = 0; i < std::min<size_t>(30, tree_widths_.size()); i++) {
-                        std::cerr << static_cast<int>(tree_widths_[i]) << " ";
-                    }
-                    std::cerr << std::endl;
                 }
                 // Add lower_width offset
                 for (auto& w : tree_widths_) {
@@ -417,29 +366,9 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                         w = static_cast<u8>(w + tree_lower_width_);
                     }
                 }
-                if (g_debug) {
-                    std::cerr << "After lower_width offset (first 30): ";
-                    for (size_t i = 0; i < std::min<size_t>(30, tree_widths_.size()); i++) {
-                        std::cerr << static_cast<int>(tree_widths_[i]) << " ";
-                    }
-                    std::cerr << std::endl;
-                    int max_w = 0;
-                    for (auto w : tree_widths_) max_w = std::max(max_w, static_cast<int>(w));
-                    std::cerr << "Max width: " << max_w << " (max allowed: " << MAXCODEWIDTH << ")" << std::endl;
-                }
                 // Don't pad - use the exact number of widths read
-                if (g_debug) {
-                    std::cerr << "[STREAM] Before build: widths[32]=" << static_cast<int>(tree_widths_[32])
-                              << " widths[105]=" << static_cast<int>(tree_widths_[105])
-                              << " total=" << tree_widths_.size() << std::endl;
-                }
                 auto r = build_huffman_tree(tree_widths_, MAXCODEWIDTH, main_tree_);
                 if (!r) return crate::make_unexpected(r.error());
-                if (g_debug) {
-                    std::cerr << "[STREAM] main_tree codes[1178]=" << main_tree_.codes[1178]
-                              << " widths[32]=" << static_cast<int>(main_tree_.widths[32])
-                              << " widths[105]=" << static_cast<int>(main_tree_.widths[105]) << std::endl;
-                }
                 state_ = state::READ_LEN_TREE_HEADER;
                 break;
             }
@@ -541,11 +470,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                     return finalize(decode_status::needs_more_input);
                 }
                 syms_to_read_ = static_cast<int>(count);
-                if (g_debug) {
-                    std::cerr << "SYMS_COUNT: " << count
-                              << " buffer=0x" << std::hex << bit_buffer_ << std::dec
-                              << " bits_left=" << bits_left_ << std::endl;
-                }
                 state_ = state::READ_MAIN_SYMBOL;
                 break;
             }
@@ -555,16 +479,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                 if (syms_to_read_ == 0) {
                     state_ = state::READ_MAIN_TREE_HEADER;
                     break;
-                }
-
-                static bool first_main_sym_debug = true;
-                if (g_debug && first_main_sym_debug && window_.size() == 0) {
-                    // Calculate what peek(11) would return
-                    u32 peek_val = static_cast<u32>(bit_buffer_ >> (64 - 11));
-                    std::cerr << "BEFORE first main sym: buffer=0x" << std::hex << bit_buffer_
-                              << std::dec << " bits_left=" << bits_left_
-                              << " peek(11)=" << peek_val << std::endl;
-                    first_main_sym_debug = false;
                 }
 
                 u16 symbol = 0;
@@ -577,14 +491,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                 }
                 syms_to_read_--;
                 current_symbol_ = symbol;
-
-                static int main_sym_debug = 30;
-                if (g_debug && main_sym_debug > 0) {
-                    std::cerr << "MAIN_SYM: " << symbol
-                              << (symbol <= 255 ? " (lit)" : symbol <= 259 ? " (hist)" : " (dist)")
-                              << " window=" << window_.size() << std::endl;
-                    main_sym_debug--;
-                }
 
                 if (symbol <= 255) {
                     state_ = state::OUTPUT_LITERAL;
@@ -636,10 +542,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                 }
                 copy_dist_ += 1;
                 copy_pos_ = 0;
-                if (g_debug) {
-                    std::cerr << "Copy(hist): dist=" << copy_dist_ << " len=" << copy_len_
-                              << " window=" << window_.size() << " offset=" << offset << std::endl;
-                }
                 state_ = state::COPY_MATCH;
                 break;
             }
@@ -656,12 +558,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                         return finalize(decode_status::needs_more_input);
                     }
                     dist_val = extra + (1u << (dist_bits - 1));
-                }
-
-                if (g_debug) {
-                    std::cerr << "READ_DIST: symbol=" << current_symbol_
-                              << " dist_bits=" << dist_bits
-                              << " dist_val=" << dist_val << std::endl;
                 }
 
                 copy_dist_ = dist_val;
@@ -691,10 +587,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                 }
                 copy_dist_ += 1;
                 copy_pos_ = 0;
-                if (g_debug) {
-                    std::cerr << "Copy(new): dist=" << copy_dist_ << " len=" << copy_len_
-                              << " window=" << window_.size() << std::endl;
-                }
                 state_ = state::COPY_MATCH;
                 break;
             }
@@ -706,11 +598,6 @@ result_t<stream_result> ace_lz_decompressor::decompress_some(
                     }
 
                     if (copy_dist_ > window_.size()) {
-                        if (g_debug) {
-                            std::cerr << "COPY_MATCH error: dist=" << copy_dist_
-                                      << " window.size=" << window_.size()
-                                      << " len=" << copy_len_ << " pos=" << copy_pos_ << std::endl;
-                        }
                         return crate::make_unexpected(error{error_code::CorruptData, "ACE LZ77 copy source out of bounds"});
                     }
 

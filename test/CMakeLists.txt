@@ -8,7 +8,10 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/crate/test_config.hh"
 )
 
+set(MD5_SOURCE md5.c)
+
 add_executable(crate_tests
+    ${MD5_SOURCE}
     test_ace.cc
     test_arc.cc
     test_arj.cc
@@ -57,6 +60,7 @@ target_compile_features(crate_tests PRIVATE cxx_std_20)
 
 target_include_directories(crate_tests PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
     "${PROJECT_SOURCE_DIR}/include"
     "${PROJECT_BINARY_DIR}/include"
     "${PROJECT_SOURCE_DIR}/src/crate/include"
@@ -105,6 +109,9 @@ if(NEUTRINO_CRATE_WITH_XZ)
         "${xz_SOURCE_DIR}/src/liblzma/api"
     )
 endif()
+
+# Disable warnings for third-party md5.c (public domain, Solar Designer)
+set_source_files_properties(${MD5_SOURCE} PROPERTIES COMPILE_OPTIONS "-w")
 
 neutrino_target_warnings(crate_tests)
 neutrino_target_sanitizers(crate_tests)

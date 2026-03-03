@@ -5,6 +5,7 @@
 #include <crate/compression/arj_lz.hh>
 #include <crate/compression/lzh.hh>
 #include <crate/test_config.hh>
+#include "md5.h"
 #include <array>
 #include <cstring>
 #include <fstream>
@@ -141,9 +142,21 @@ TEST_SUITE("ArjArchive - Corpus") {
     const auto CORPUS_DIR = test::arj_dir();
 
     // Reference file for all ARJ corpus tests: testdata/LICENSE
-    // All test archives contain this single file (11357 bytes, CRC32=0x7B5D04BC)
     constexpr size_t LICENSE_SIZE = 11357;
-    constexpr u32 LICENSE_CRC32 = 0x7B5D04BCU;
+    const char* LICENSE_MD5 = "86d3f3a95c324c9479bd8986968f4327";
+
+    std::string compute_md5(const byte_vector& data) {
+        MD5_CTX ctx;
+        MD5_Init(&ctx);
+        unsigned long sz = data.size();
+        MD5_Update(&ctx, data.data(), sz);
+        unsigned char digest[MD5_DIGEST_LENGTH];
+        MD5_Final(digest, &ctx);
+        char hex[33];
+        for (int i = 0; i < 16; i++)
+            snprintf(hex + i * 2, 3, "%02x", digest[i]);
+        return hex;
+    }
 
     byte_vector read_reference_file() {
         auto ref_path = test::testdata_dir() / "LICENSE";
@@ -167,7 +180,7 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(actual->size() == LICENSE_SIZE);
-        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
+        CHECK(compute_md5(*actual) == LICENSE_MD5);
 
         auto ref = read_reference_file();
         REQUIRE(ref.size() == LICENSE_SIZE);
@@ -185,7 +198,7 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(actual->size() == LICENSE_SIZE);
-        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
+        CHECK(compute_md5(*actual) == LICENSE_MD5);
     }
 
     TEST_CASE("Streaming extract_to - LZH") {
@@ -217,7 +230,7 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(actual->size() == LICENSE_SIZE);
-        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
+        CHECK(compute_md5(*actual) == LICENSE_MD5);
     }
 
     TEST_CASE("Method 3 - LZH") {
@@ -231,7 +244,7 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(actual->size() == LICENSE_SIZE);
-        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
+        CHECK(compute_md5(*actual) == LICENSE_MD5);
     }
 
     TEST_CASE("Method 4 - LZ77") {
@@ -245,7 +258,7 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
         CHECK(actual->size() == LICENSE_SIZE);
-        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
+        CHECK(compute_md5(*actual) == LICENSE_MD5);
     }
 
     TEST_CASE("Wrong CRC32 - should fail extraction") {

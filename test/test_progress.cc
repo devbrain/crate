@@ -111,7 +111,6 @@ TEST_SUITE("Progress - Explode Decompressor") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == *result);
-        MESSAGE("Explode progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -123,7 +122,6 @@ TEST_SUITE("Progress - Inflate Decompressor") {
 
         // Skip gzip header (10 bytes minimum)
         if (compressed.size() < 18) {
-            MESSAGE("Invalid gzip file, skipping");
             return;
         }
 
@@ -147,7 +145,6 @@ TEST_SUITE("Progress - Inflate Decompressor") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == *result);
-        MESSAGE("Inflate progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -191,7 +188,6 @@ TEST_SUITE("Progress - ARJ Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("ARJ byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -213,7 +209,6 @@ TEST_SUITE("Progress - CAB Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("CAB byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -235,7 +230,6 @@ TEST_SUITE("Progress - LHA Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("LHA byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -257,7 +251,6 @@ TEST_SUITE("Progress - ARC Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("ARC byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -279,7 +272,6 @@ TEST_SUITE("Progress - ZOO Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("ZOO byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -301,7 +293,6 @@ TEST_SUITE("Progress - HA Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("HA byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -323,7 +314,6 @@ TEST_SUITE("Progress - HYP Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("HYP byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -345,7 +335,6 @@ TEST_SUITE("Progress - ACE Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("ACE byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -369,7 +358,6 @@ TEST_SUITE("Progress - StuffIt Archive") {
         }
 
         if (!test_entry) {
-            MESSAGE("No extractable file found, skipping");
             return;
         }
 
@@ -381,7 +369,6 @@ TEST_SUITE("Progress - StuffIt Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("StuffIt byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -403,7 +390,6 @@ TEST_SUITE("Progress - RAR Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("RAR byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -415,12 +401,10 @@ TEST_SUITE("Progress - CHM Archive") {
 
         auto archive = chm_archive::open(archive_path);
         if (!archive.has_value()) {
-            MESSAGE("Archive failed to open (may be intentionally malformed), skipping");
             return;
         }
 
         if ((*archive)->files().empty()) {
-            MESSAGE("No files in archive, skipping");
             return;
         }
 
@@ -434,7 +418,6 @@ TEST_SUITE("Progress - CHM Archive") {
         }
 
         if (!test_entry) {
-            MESSAGE("No extractable file found, skipping");
             return;
         }
 
@@ -444,13 +427,11 @@ TEST_SUITE("Progress - CHM Archive") {
         auto result = (*archive)->extract(*test_entry);
 
         if (!result.has_value()) {
-            MESSAGE("Extraction failed (may be intentionally malformed), skipping");
             return;
         }
 
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("CHM byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -473,7 +454,6 @@ TEST_SUITE("Progress - ZIP Archive") {
         }
 
         if (!test_entry) {
-            MESSAGE("No extractable file found, skipping");
             return;
         }
 
@@ -485,7 +465,6 @@ TEST_SUITE("Progress - ZIP Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("ZIP byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -508,7 +487,6 @@ TEST_SUITE("Progress - Floppy Image") {
         }
 
         if (!test_entry) {
-            MESSAGE("No extractable file found, skipping");
             return;
         }
 
@@ -520,7 +498,6 @@ TEST_SUITE("Progress - Floppy Image") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("Floppy image byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 
@@ -547,7 +524,6 @@ TEST_SUITE("Progress - libarchive Archive") {
         }
 
         if (!test_entry) {
-            MESSAGE("No extractable file found, skipping");
             return;
         }
 
@@ -559,7 +535,6 @@ TEST_SUITE("Progress - libarchive Archive") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == result->size());
-        MESSAGE("libarchive byte progress callback called ", tracker.call_count.load(), " times");
     }
 }
 #endif
@@ -584,7 +559,6 @@ TEST_SUITE("Progress - Zstd Decompressor") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == *result);
-        MESSAGE("Zstd progress callback called ", tracker.call_count.load(), " times");
     }
 }
 #endif
@@ -609,7 +583,6 @@ TEST_SUITE("Progress - Brotli Decompressor") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == *result);
-        MESSAGE("Brotli progress callback called ", tracker.call_count.load(), " times");
     }
 }
 #endif
@@ -634,7 +607,6 @@ TEST_SUITE("Progress - Bzip2 Decompressor") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == *result);
-        MESSAGE("Bzip2 progress callback called ", tracker.call_count.load(), " times");
     }
 }
 #endif
@@ -659,7 +631,6 @@ TEST_SUITE("Progress - XZ Decompressor") {
         REQUIRE(result.has_value());
         CHECK(tracker.call_count > 0);
         CHECK(tracker.last_bytes_written == *result);
-        MESSAGE("XZ progress callback called ", tracker.call_count.load(), " times");
     }
 }
 #endif

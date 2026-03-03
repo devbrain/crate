@@ -2,6 +2,7 @@
 #include <crate/formats/hyp.hh>
 #include <crate/formats/hyp_internal.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <fstream>
 #include <cstring>
 

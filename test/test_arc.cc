@@ -3,6 +3,7 @@
 #include <crate/formats/arc_internal.hh>
 #include <crate/core/crc.hh>
 #include <crate/test_config.hh>
+#include <array>
 #include <fstream>
 #include <cstring>
 
