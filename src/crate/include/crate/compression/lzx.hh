@@ -200,6 +200,10 @@ private:
 
     u32 uncompressed_value_ = 0;
     unsigned uncompressed_bytes_read_ = 0;
+
+    // Frame boundary tracking (LZX aligns bitstream every 32K output bytes)
+    static constexpr u32 LZX_FRAME_SIZE = 32768;
+    u32 frame_output_ = 0;  // bytes output since last frame alignment
 };
 
 } // namespace crate

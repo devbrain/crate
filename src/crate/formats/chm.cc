@@ -110,12 +110,10 @@ namespace crate {
     const std::vector <file_entry>& chm_archive::files() const { return m_pimpl->files_; }
 
     void_result_t chm_archive::decompress_content() {
-        // Check if already decompressed
         if (!m_pimpl->decompressed_content_.empty()) {
             return {};
         }
 
-        // Need compressed content and valid parameters
         if (m_pimpl->compressed_length_ == 0 || m_pimpl->uncompressed_length_ == 0) {
             return crate::make_unexpected(error{
                 error_code::UnsupportedCompression,
@@ -123,45 +121,99 @@ namespace crate {
             });
         }
 
-        // Create LZX decompressor in CHM mode
         auto dec = lzx_decompressor::create(m_pimpl->lzx_window_bits_, lzx_mode::chm);
         if (!dec) {
             return crate::make_unexpected(dec.error());
         }
 
-        // Decompress entire content
-        // Note: CHM LZX data may have a 6-byte header at certain reset points
-        // Check for the "10 10 03 00 00 00" prefix and skip it if present
-        const u8* comp_start = m_pimpl->data_.data() + m_pimpl->compressed_offset_;
-        size_t comp_len = static_cast<size_t>(m_pimpl->compressed_length_);
-        if (comp_len >= 6 && comp_start[0] == 0x10 && comp_start[1] == 0x10 &&
-            comp_start[2] == 0x03 && comp_start[3] == 0x00) {
-            comp_start += 6;
-            comp_len -= 6;
-        }
-        byte_span compressed(comp_start, comp_len);
+        const u8* comp_base = m_pimpl->data_.data() + m_pimpl->compressed_offset_;
+        size_t comp_total = static_cast<size_t>(m_pimpl->compressed_length_);
+        size_t uncomp_total = static_cast<size_t>(m_pimpl->uncompressed_length_);
 
-        m_pimpl->decompressed_content_.resize(static_cast<size_t>(m_pimpl->uncompressed_length_));
+        m_pimpl->decompressed_content_.resize(uncomp_total);
 
-        (*dec)->set_expected_output_size(m_pimpl->decompressed_content_.size());
+        auto& reset_table = m_pimpl->reset_table_;
 
-        auto result = (*dec)->decompress_some(
-            compressed,
-            m_pimpl->decompressed_content_,
-            true);
-
-        if (!result) {
-            m_pimpl->decompressed_content_.clear();
-            return crate::make_unexpected(result.error());
+        if (reset_table.empty()) {
+            // No reset table — decompress everything in one pass
+            (*dec)->set_expected_output_size(uncomp_total);
+            auto result = (*dec)->decompress_some(
+                byte_span(comp_base, comp_total),
+                m_pimpl->decompressed_content_,
+                true);
+            if (!result) {
+                m_pimpl->decompressed_content_.clear();
+                return crate::make_unexpected(result.error());
+            }
+            return {};
         }
 
-        if (result->status != decode_status::done) {
+        // LZXC reset_interval: number of 32K frames between decoder resets
+        // Version 2: raw value is already in frame units
+        // Version 1: raw value is in bytes, divide by 32768
+        unsigned reset_interval_frames = m_pimpl->lzxc_.reset_interval;
+        if (m_pimpl->lzxc_.version == 1 && reset_interval_frames >= 32768) {
+            reset_interval_frames /= 32768;
+        }
+        if (reset_interval_frames == 0) reset_interval_frames = 1;
+
+        // Each reset table entry covers one 32K frame.
+        // Reset intervals span multiple frames (e.g., 2 entries per reset).
+        // Decompress one reset interval at a time.
+        size_t output_pos = 0;
+        size_t entry_idx = 0;
+
+        while (entry_idx < reset_table.size() && output_pos < uncomp_total) {
+            // This reset interval starts at entry_idx and covers reset_interval_frames entries
+            size_t interval_start = entry_idx;
+            size_t interval_end = std::min(entry_idx + reset_interval_frames, reset_table.size());
+
+            // Compressed data range for this reset interval
+            auto comp_start_off = static_cast<size_t>(reset_table[interval_start]);
+            auto comp_end_off = (interval_end < reset_table.size())
+                ? static_cast<size_t>(reset_table[interval_end])
+                : comp_total;
+
+            if (comp_start_off >= comp_total) break;
+            if (comp_end_off > comp_total) comp_end_off = comp_total;
+
+            const u8* interval_ptr = comp_base + comp_start_off;
+            size_t interval_len = comp_end_off - comp_start_off;
+
+            // Output size: frames * 32768, clamped to remaining
+            size_t interval_output = std::min(
+                static_cast<size_t>(reset_interval_frames) * 32768,
+                uncomp_total - output_pos);
+
+            if (interval_start > 0) {
+                (*dec)->reset_at_interval();
+            }
+            (*dec)->set_expected_output_size(interval_output);
+
+            mutable_byte_span output_span(
+                m_pimpl->decompressed_content_.data() + output_pos,
+                interval_output);
+
+            auto result = (*dec)->decompress_some(
+                byte_span(interval_ptr, interval_len),
+                output_span,
+                true);
+
+            if (!result) {
+                m_pimpl->decompressed_content_.clear();
+                return crate::make_unexpected(result.error());
+            }
+
+            output_pos += result->bytes_written;
+            entry_idx = interval_end;
+        }
+
+        if (output_pos < uncomp_total) {
             m_pimpl->decompressed_content_.clear();
             return crate::make_unexpected(error{
                 error_code::CorruptData,
-                "LZX decompression incomplete: read=" + std::to_string(result->bytes_read) +
-                " written=" + std::to_string(result->bytes_written) +
-                " expected=" + std::to_string(m_pimpl->uncompressed_length_)
+                "LZX decompression incomplete: wrote " + std::to_string(output_pos) +
+                " of " + std::to_string(uncomp_total) + " bytes"
             });
         }
 

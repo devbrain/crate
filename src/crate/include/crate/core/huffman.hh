@@ -99,7 +99,7 @@ namespace crate {
                             // MSB order: use code shifted left, fill consecutive entries
                             // Code is at the MSB position, so shift it to align with TableBits
                             u32 idx = c << (TableBits - len);
-                            for (u32 i = 0; i < fill; i++) {
+                            for (u32 i = 0; i < fill && (idx + i) < TABLE_SIZE; i++) {
                                 table_[idx + i] = huffman_entry{
                                     static_cast <u16>(sym), len, 0
                                 };
@@ -109,9 +109,12 @@ namespace crate {
                             u32 idx = reverse_bits(c, len);
 
                             for (u32 i = 0; i < fill; i++) {
-                                table_[idx | (i << len)] = huffman_entry{
-                                    static_cast <u16>(sym), len, 0
-                                };
+                                u32 ti = idx | (i << len);
+                                if (ti < TABLE_SIZE) {
+                                    table_[ti] = huffman_entry{
+                                        static_cast <u16>(sym), len, 0
+                                    };
+                                }
                             }
                         }
                     } else {

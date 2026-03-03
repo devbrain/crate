@@ -383,7 +383,7 @@ TEST_SUITE("ChmArchive - Functional Tests") {
             if (f.name == "main.hhc" && f.folder_index == 1) {
                 auto extract_result = archive->extract(f);
                 // LZX decompression is now implemented
-                CHECK(extract_result.has_value());
+                REQUIRE(extract_result.has_value());
                 if (extract_result.has_value()) {
                     CHECK(extract_result->size() == 684);
                 }

@@ -111,6 +111,17 @@ result_t<stream_result> lzx_decompressor::decompress_some(
             }
 
             case state::READ_BLOCK_TYPE: {
+                // Frame alignment: after every 32K of output, realign bitstream
+                // to 16-bit word boundary (per LZX spec)
+                while (frame_output_ >= LZX_FRAME_SIZE) {
+                    unsigned discard = bits_left_ & 15;
+                    if (discard > 0) {
+                        bit_buffer_ <<= discard;
+                        bits_left_ -= discard;
+                    }
+                    frame_output_ -= LZX_FRAME_SIZE;
+                }
+
                 // Check if we've already produced enough output
                 size_t total = total_output_written() + bytes_written();
                 if (expected_output_set() && total >= expected_output_size()) {
@@ -123,7 +134,6 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     goto need_input;
                 }
                 block_type_ = static_cast <u8>(value);
-
                 state_ = state::READ_BLOCK_SIZE_HI;
                 break;
             }
@@ -225,12 +235,6 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                 if (!*result) {
                     goto need_input;
                 }
-                for (size_t i = 0; i < 20 && i < length_lengths_.size(); i++) {
-                }
-                u8 max_len = 0;
-                for (auto len : length_lengths_) {
-                    if (len > max_len) max_len = len;
-                }
                 auto build = length_decoder_.build_msb(length_lengths_);
                 if (!build) {
                     return crate::make_unexpected(build.error());
@@ -240,6 +244,16 @@ result_t<stream_result> lzx_decompressor::decompress_some(
             }
 
             case state::DECODE_MAIN_SYMBOL: {
+                // Frame alignment: after every 32K of output, realign bitstream
+                while (frame_output_ >= LZX_FRAME_SIZE) {
+                    unsigned discard = bits_left_ & 15;
+                    if (discard > 0) {
+                        bit_buffer_ <<= discard;
+                        bits_left_ -= discard;
+                    }
+                    frame_output_ -= LZX_FRAME_SIZE;
+                }
+
                 if (block_remaining_ == 0) {
                     state_ = state::READ_BLOCK_TYPE;
                     break;
@@ -262,6 +276,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     *out_ptr++ = value;
                     window_[window_pos_++ & (window_size_ - 1)] = value;
                     block_remaining_--;
+                    frame_output_++;
                     break;
                 }
 
@@ -415,6 +430,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     window_[window_pos_++ & (window_size_ - 1)] = value;
                     match_remaining_--;
                     block_remaining_--;
+                    frame_output_++;
                 }
 
                 if (block_remaining_ == 0) {
@@ -466,6 +482,7 @@ result_t<stream_result> lzx_decompressor::decompress_some(
                     *out_ptr++ = value;
                     window_[window_pos_++ & (window_size_ - 1)] = value;
                     block_remaining_--;
+                    frame_output_++;
                 }
 
                 if (block_remaining_ == 0) {
@@ -516,6 +533,7 @@ void lzx_decompressor::set_expected_output_size(size_t size) {
     state_ = cab_header_read_ ? state::READ_BLOCK_TYPE : state::READ_CAB_HEADER;
     bit_buffer_ = 0;
     bits_left_ = 0;
+    frame_output_ = 0;
     block_type_ = 0;
     block_size_ = 0;
     block_remaining_ = 0;
@@ -550,10 +568,11 @@ void lzx_decompressor::init_state() {
     bit_buffer_ = 0;
     bits_left_ = 0;
     e8_filesize_ = 0;
-    // LZX streams start with E8 translation header (1-bit flag + optional 32-bit size)
-    // The header is read once at the start of the compressed stream
+    // LZX always starts with E8 translation header (1-bit flag + optional 32-bit size)
+    // This applies to both CAB and CHM modes
     state_ = state::READ_CAB_HEADER;
     cab_header_read_ = false;
+    frame_output_ = 0;
     block_type_ = 0;
     block_size_ = 0;
     block_remaining_ = 0;
@@ -842,16 +861,12 @@ void lzx_decompressor::reset_at_interval() {
     R2_ = 1;
     std::fill(main_lengths_.begin(), main_lengths_.end(), 0);
     std::fill(length_lengths_.begin(), length_lengths_.end(), 0);
-    // CAB mode reads E8 header after a reset, CHM mode does not
-    if (mode_ == lzx_mode::cab) {
-        state_ = state::READ_CAB_HEADER;
-        cab_header_read_ = false;
-    } else {
-        state_ = state::READ_BLOCK_TYPE;
-        cab_header_read_ = true;
-    }
+    // LZX always re-reads E8 header after a reset (both CAB and CHM)
+    state_ = state::READ_CAB_HEADER;
+    cab_header_read_ = false;
     bit_buffer_ = 0;
     bits_left_ = 0;
+    frame_output_ = 0;
     block_type_ = 0;
     block_size_ = 0;
     block_remaining_ = 0;
