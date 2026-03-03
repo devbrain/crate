@@ -730,44 +730,41 @@ TEST_SUITE("RarArchive - Corpus Summary") {
 
     TEST_CASE("Corpus file count") {
         int found = 0;
-        int missing = 0;
-
-        std::vector<std::string> missing_files;
 
         for (const auto& test : ALL_TESTS) {
             auto path = UNRAR_TEST_DIR / test.archive_name;
             if (std::filesystem::exists(path)) {
                 found++;
             } else {
-                missing++;
-                missing_files.push_back(test.archive_name);
+                FAIL_CHECK("Missing corpus file: " << test.archive_name);
             }
         }
 
-        (void)missing_files;  // Used for debugging
-        CHECK(found > 50);  // Should have most files
+        CHECK(found == 52);
     }
 
     TEST_CASE("Archive open statistics") {
         int opened = 0;
         int failed = 0;
-        std::vector<std::string> failed_archives;
 
         for (const auto& test : ALL_TESTS) {
             auto path = UNRAR_TEST_DIR / test.archive_name;
-            if (!std::filesystem::exists(path)) continue;
+            if (!std::filesystem::exists(path)) {
+                FAIL_CHECK("Missing corpus file: " << test.archive_name);
+                continue;
+            }
 
             auto archive = rar_archive::open(path);
             if (archive.has_value()) {
                 opened++;
             } else {
+                FAIL_CHECK("Failed to open: " << test.archive_name << ": " << archive.error().message());
                 failed++;
-                failed_archives.push_back(test.archive_name + ": " + std::string(archive.error().message()));
             }
         }
 
-        (void)failed_archives;  // Used for debugging
-        CHECK(opened > 0);
+        CHECK(failed == 0);
+        CHECK(opened == 52);
     }
 
     TEST_CASE("Full extraction test - all basic RAR5 archives") {
