@@ -7,6 +7,22 @@
 
 using namespace crate;
 
+namespace {
+    // Exercise archive open + extraction on potentially malformed input.
+    // CVE tests assert "no crash" and verify extraction size consistency.
+    void exercise_chm_archive(const std::filesystem::path& path) {
+        auto archive = chm_archive::open(path);
+        if (archive.has_value()) {
+            for (const auto& f : (*archive)->files()) {
+                auto result = (*archive)->extract(f);
+                if (result.has_value()) {
+                    CHECK(result->size() == f.uncompressed_size);
+                }
+            }
+        }
+    }
+}
+
 TEST_SUITE("ChmArchive - Basic") {
     TEST_CASE("Invalid signature") {
         std::array<u8, 16> invalid_data = {0};
@@ -73,7 +89,10 @@ TEST_SUITE("ChmArchive - Basic") {
         }
 
         auto archive = chm_archive::open(chm_data);
-        // Will likely fail due to incomplete structure but should handle gracefully
+        // Incomplete structure may parse partially
+        if (archive.has_value()) {
+            CHECK((*archive)->files().empty());
+        }
     }
 }
 
@@ -81,73 +100,55 @@ TEST_SUITE("ChmArchive - Security/CVE Tests") {
     TEST_CASE("CVE-2015-4468 - namelen bounds") {
         auto path = test::chm_dir() / "cve-2015-4468-namelen-bounds.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully, no crash or out-of-bounds read
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2015-4469 - namelen bounds") {
         auto path = test::chm_dir() / "cve-2015-4469-namelen-bounds.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2015-4472 - namelen bounds") {
         auto path = test::chm_dir() / "cve-2015-4472-namelen-bounds.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2017-6419 - LZX negative spaninfo") {
         auto path = test::chm_dir() / "cve-2017-6419-lzx-negative-spaninfo.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2018-14679 - off by one") {
         auto path = test::chm_dir() / "cve-2018-14679-off-by-one.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2018-14680 - blank filenames") {
         auto path = test::chm_dir() / "cve-2018-14680-blank-filenames.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2018-14682 - unicode u100") {
         auto path = test::chm_dir() / "cve-2018-14682-unicode-u100.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2018-18585 - blank filenames") {
         auto path = test::chm_dir() / "cve-2018-18585-blank-filenames.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully
+        exercise_chm_archive(path);
     }
 
     TEST_CASE("CVE-2019-1010305 - name overread") {
         auto path = test::chm_dir() / "cve-2019-1010305-name-overread.chm";
         REQUIRE(std::filesystem::exists(path));
-
-        auto archive = chm_archive::open(path);
-        // Should handle gracefully, no out-of-bounds read
+        exercise_chm_archive(path);
     }
 }
 
@@ -157,7 +158,7 @@ TEST_SUITE("ChmArchive - Encoded Integers") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = chm_archive::open(path);
-        // Should parse correctly
+        REQUIRE(archive.has_value());
     }
 
     TEST_CASE("Encints 32-bit lengths") {
@@ -165,7 +166,7 @@ TEST_SUITE("ChmArchive - Encoded Integers") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = chm_archive::open(path);
-        // Should parse correctly
+        REQUIRE(archive.has_value());
     }
 
     TEST_CASE("Encints 32-bit both") {
@@ -173,7 +174,7 @@ TEST_SUITE("ChmArchive - Encoded Integers") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = chm_archive::open(path);
-        // Should parse correctly
+        REQUIRE(archive.has_value());
     }
 
     TEST_CASE("Encints 64-bit offsets") {
@@ -181,7 +182,7 @@ TEST_SUITE("ChmArchive - Encoded Integers") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = chm_archive::open(path);
-        // Should parse correctly
+        REQUIRE(archive.has_value());
     }
 
     TEST_CASE("Encints 64-bit lengths") {
@@ -189,7 +190,7 @@ TEST_SUITE("ChmArchive - Encoded Integers") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = chm_archive::open(path);
-        // Should parse correctly
+        REQUIRE(archive.has_value());
     }
 
     TEST_CASE("Encints 64-bit both") {
@@ -197,30 +198,17 @@ TEST_SUITE("ChmArchive - Encoded Integers") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = chm_archive::open(path);
-        // Should parse correctly
+        REQUIRE(archive.has_value());
     }
 }
 
 TEST_SUITE("ChmArchive - Additional Tests") {
     TEST_CASE("CVE-2015-4467 - reset interval zero (XOR file)") {
-        // This is a .chm.xor file, may need special handling
         auto path = test::chm_dir() / "cve-2015-4467-reset-interval-zero.chm.xor";
         REQUIRE(std::filesystem::exists(path));
-        // This file has .xor extension - it's an XOR-encoded CHM
-        // Just verify we can read the file without crashing
-        auto file = file_input_stream::open(path);
-        if (file.has_value()) {
-            auto size = file->size();
-            if (size.has_value()) {
-                byte_vector data(*size);
-                auto read = file->read(data);
-                if (read.has_value()) {
-                    // Try to open as CHM - will likely fail due to XOR encoding
-                    auto archive = chm_archive::open(data);
-                    // Expected to fail with InvalidSignature since it's XOR encoded
-                }
-            }
-        }
+        // XOR-encoded file — not a valid CHM, should fail to parse
+        auto archive = chm_archive::open(path);
+        CHECK_FALSE(archive.has_value());
     }
 }
 

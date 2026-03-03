@@ -87,12 +87,11 @@ TEST_SUITE("HypArchive - Corpus") {
         auto archive = hyp_archive::open(archive_path);
         REQUIRE(archive.has_value());
 
-        if ((*archive)->files().size() >= 1) {
-            const auto& entry = (*archive)->files()[0];
-            auto actual = (*archive)->extract(entry);
-            REQUIRE(actual.has_value());
-            CHECK(compare_data(expected, *actual));
-        }
+        REQUIRE(!(*archive)->files().empty());
+        const auto& entry = (*archive)->files()[0];
+        auto actual = (*archive)->extract(entry);
+        REQUIRE(actual.has_value());
+        CHECK(compare_data(expected, *actual));
     }
 
     TEST_CASE("Compressed - license.hyp") {
@@ -118,6 +117,14 @@ TEST_SUITE("HypArchive - Corpus") {
         REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = hyp_archive::open(archive_path);
-        // Should either fail to open or have issues with extraction
+        if (archive.has_value()) {
+            // If open succeeds, extraction should fail on corrupt data
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() == entry.uncompressed_size);
+                }
+            }
+        }
     }
 }

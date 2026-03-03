@@ -93,6 +93,7 @@ TEST_SUITE("CabArchive - File Tests (test-cab)") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("Directory traversal prevention") {
@@ -187,7 +188,14 @@ TEST_SUITE("CabArchive - File Tests (test-mspack)") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = cab_archive::open(path);
-        // May or may not succeed depending on the tricky structure
+        if (archive.has_value()) {
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() == entry.uncompressed_size);
+                }
+            }
+        }
     }
 }
 
@@ -277,8 +285,14 @@ TEST_SUITE("CabArchive - Bad Data") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = cab_archive::open(path);
-        // libmspack fails to open due to invalid folder index reference
-        // Our implementation may open but fail later, which is also acceptable
+        if (archive.has_value()) {
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() == entry.uncompressed_size);
+                }
+            }
+        }
     }
 
     TEST_CASE("Bad no files - should fail to open") {
@@ -287,8 +301,9 @@ TEST_SUITE("CabArchive - Bad Data") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = cab_archive::open(path);
-        // libmspack refuses to open CABs with 0 files
-        // Our implementation may allow it (empty archive)
+        if (archive.has_value()) {
+            CHECK((*archive)->files().empty());
+        }
     }
 
     TEST_CASE("Bad no folders - should fail to open") {
@@ -297,8 +312,13 @@ TEST_SUITE("CabArchive - Bad Data") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = cab_archive::open(path);
-        // libmspack refuses to open CABs with 0 folders
-        // Our implementation may allow it
+        if (archive.has_value()) {
+            // No folders means no data — extraction should fail
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                CHECK_FALSE(data.has_value());
+            }
+        }
     }
 }
 
@@ -309,6 +329,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve --D") {
@@ -317,6 +343,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve -F-") {
@@ -325,6 +357,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve -FD") {
@@ -333,6 +371,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve H--") {
@@ -341,6 +385,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve H-D") {
@@ -349,6 +399,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve HF-") {
@@ -357,6 +413,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Reserve HFD") {
@@ -365,6 +427,12 @@ TEST_SUITE("CabArchive - Reserve Headers") {
 
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 }
 
@@ -482,8 +550,14 @@ TEST_SUITE("CabArchive - Security/CVE Tests") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = cab_archive::open(path);
-        // libmspack rejects this due to empty filename
-        // Our impl may or may not reject it
+        if (archive.has_value()) {
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() == entry.uncompressed_size);
+                }
+            }
+        }
     }
 
     TEST_CASE("Filename read violation 2 - opens, extraction fails") {
@@ -553,11 +627,17 @@ TEST_SUITE("CabArchive - Partial Strings") {
 
     TEST_CASE("Partial string - no fname - handle safely") {
         // Ground truth: libmspack fails with MSPACK_ERR_DATAFORMAT
-        // Our impl may be more lenient on truncated filename strings
         auto path = test::mspack_test_dir() / "partial_str_nofname.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
-        // May fail or succeed - key is no crash
+        if (archive.has_value()) {
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() == entry.uncompressed_size);
+                }
+            }
+        }
     }
 
     TEST_CASE("Partial string - nonname - should fail") {
@@ -590,11 +670,17 @@ TEST_SUITE("CabArchive - Partial Strings") {
 
     TEST_CASE("Partial string - shortfname - handle safely") {
         // Ground truth: libmspack fails
-        // Our impl may be more lenient on truncated filename strings
         auto path = test::mspack_test_dir() / "partial_str_shortfname.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
-        // May fail or succeed - key is no crash
+        if (archive.has_value()) {
+            for (const auto& entry : (*archive)->files()) {
+                auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() == entry.uncompressed_size);
+                }
+            }
+        }
     }
 
     TEST_CASE("Partial string - shortninfo - should fail") {
@@ -632,6 +718,12 @@ TEST_SUITE("CabArchive - Encoding Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("UTF-8 filenames") {
@@ -639,6 +731,12 @@ TEST_SUITE("CabArchive - Encoding Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("KOI8 encoded filenames") {
@@ -646,6 +744,12 @@ TEST_SUITE("CabArchive - Encoding Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Latin1 encoded filenames") {
@@ -653,6 +757,12 @@ TEST_SUITE("CabArchive - Encoding Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("Shift-JIS encoded filenames") {
@@ -660,6 +770,12 @@ TEST_SUITE("CabArchive - Encoding Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 
     TEST_CASE("UTF-8 stress test") {
@@ -667,6 +783,12 @@ TEST_SUITE("CabArchive - Encoding Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
+        for (const auto& file : (*archive)->files()) {
+            auto data = (*archive)->extract(file);
+            REQUIRE(data.has_value());
+            CHECK(data->size() == file.uncompressed_size);
+        }
     }
 }
 
@@ -676,6 +798,7 @@ TEST_SUITE("CabArchive - Large Files (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
         REQUIRE(archive.has_value());
+        CHECK(!(*archive)->files().empty());
     }
 
     TEST_CASE("Search CAB") {
