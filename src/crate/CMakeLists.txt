@@ -270,6 +270,8 @@ neutrino_library_type(crate _lib_type)
 add_library(crate ${_lib_type} $<TARGET_OBJECTS:crate_objects>)
 add_library(neutrino::crate ALIAS crate)
 
+set_target_properties(crate PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 target_compile_features(crate PUBLIC cxx_std_20)
 
 target_link_libraries(crate PUBLIC tl::expected)
