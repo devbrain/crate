@@ -42,11 +42,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # ============================================================================
 
 neutrino_define_library_options(crate)
-option(NEUTRINO_CRATE_WITH_LIBARCHIVE "Build with libarchive support" OFF)
-option(NEUTRINO_CRATE_WITH_ZSTD "Build with zstd compression support" OFF)
-option(NEUTRINO_CRATE_WITH_BROTLI "Build with brotli compression support" OFF)
-option(NEUTRINO_CRATE_WITH_BZIP2 "Build with bzip2 compression support" OFF)
-option(NEUTRINO_CRATE_WITH_XZ "Build with xz/lzma compression support" OFF)
+option(NEUTRINO_CRATE_WITH_LIBARCHIVE "Build with libarchive support" ON)
+option(NEUTRINO_CRATE_WITH_ZSTD "Build with zstd compression support" ON)
+option(NEUTRINO_CRATE_WITH_BROTLI "Build with brotli compression support" ON)
+option(NEUTRINO_CRATE_WITH_BZIP2 "Build with bzip2 compression support" ON)
+option(NEUTRINO_CRATE_WITH_XZ "Build with xz/lzma compression support" ON)
 
 if(NEUTRINO_CRATE_BUILD_TESTS)
     set(NEUTRINO_CRATE_BUILD_SHARED ON CACHE BOOL "Build shared library for tests" FORCE)
@@ -114,7 +114,11 @@ if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
         GIT_TAG v3.7.7
         GIT_SHALLOW TRUE
     )
+    # libarchive's CMakeLists.txt uses cmake_minimum_required < 3.5,
+    # which newer CMake rejects without this policy override.
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
     FetchContent_MakeAvailable(libarchive)
+    unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
 endif()
 
 # Fetch and build zstd (optional)
