@@ -43,17 +43,11 @@ add_executable(crate_tests
     test_floppy.cc
     test_zip.cc
     test_zoo.cc
-    $<TARGET_OBJECTS:crate_objects>
 )
 
 target_link_libraries(crate_tests PRIVATE
+    crate
     doctest::doctest
-    tl::expected
-    $<$<BOOL:${NEUTRINO_CRATE_WITH_LIBARCHIVE}>:archive>
-    $<$<BOOL:${NEUTRINO_CRATE_WITH_ZSTD}>:$<IF:$<BOOL:${NEUTRINO_CRATE_BUILD_SHARED}>,libzstd_shared,libzstd_static>>
-    $<$<BOOL:${NEUTRINO_CRATE_WITH_BROTLI}>:brotlidec>
-    $<$<BOOL:${NEUTRINO_CRATE_WITH_BROTLI}>:brotlicommon>
-    $<$<BOOL:${NEUTRINO_CRATE_WITH_XZ}>:liblzma>
 )
 
 target_compile_features(crate_tests PRIVATE cxx_std_20)
@@ -61,54 +55,11 @@ target_compile_features(crate_tests PRIVATE cxx_std_20)
 target_include_directories(crate_tests PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${PROJECT_SOURCE_DIR}/include"
-    "${PROJECT_BINARY_DIR}/include"
     "${PROJECT_SOURCE_DIR}/src/crate/include"
 )
 
 # Define CRATE_STATIC_DEFINE so export macros expand to nothing
 target_compile_definitions(crate_tests PRIVATE CRATE_STATIC_DEFINE)
-
-# Optional libarchive support
-if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
-    target_compile_definitions(crate_tests PRIVATE CRATE_WITH_LIBARCHIVE)
-    target_include_directories(crate_tests PRIVATE
-        "${libarchive_SOURCE_DIR}/libarchive"
-        "${libarchive_BINARY_DIR}"
-    )
-endif()
-
-# Optional zstd support
-if(NEUTRINO_CRATE_WITH_ZSTD)
-    target_compile_definitions(crate_tests PRIVATE CRATE_WITH_ZSTD)
-    target_include_directories(crate_tests PRIVATE
-        "${zstd_SOURCE_DIR}/lib"
-    )
-endif()
-
-# Optional brotli support
-if(NEUTRINO_CRATE_WITH_BROTLI)
-    target_compile_definitions(crate_tests PRIVATE CRATE_WITH_BROTLI)
-    target_include_directories(crate_tests PRIVATE
-        "${brotli_SOURCE_DIR}/c/include"
-    )
-endif()
-
-# Optional bzip2 support
-if(NEUTRINO_CRATE_WITH_BZIP2)
-    target_compile_definitions(crate_tests PRIVATE CRATE_WITH_BZIP2)
-    target_include_directories(crate_tests PRIVATE
-        "${bzip2_SOURCE_DIR}"
-    )
-endif()
-
-# Optional xz/lzma support
-if(NEUTRINO_CRATE_WITH_XZ)
-    target_compile_definitions(crate_tests PRIVATE CRATE_WITH_XZ)
-    target_include_directories(crate_tests PRIVATE
-        "${xz_SOURCE_DIR}/src/liblzma/api"
-    )
-endif()
 
 # Disable warnings for third-party md5.c (public domain, Solar Designer)
 set_source_files_properties(${MD5_SOURCE} PROPERTIES COMPILE_OPTIONS "-w")

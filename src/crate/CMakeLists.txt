@@ -207,45 +207,44 @@ if(NEUTRINO_CRATE_WITH_BZIP2)
 endif()
 
 # ============================================================================
-# OBJECT library for internal use (testing)
+# Library target
 # ============================================================================
 
-add_library(crate_objects OBJECT
+neutrino_library_type(crate _lib_type)
+
+add_library(crate ${_lib_type}
         ${CRATE_SOURCES}
         ${CRATE_PUBLIC_HEADERS}
         ${CRATE_PRIVATE_HEADERS}
         ${CRATE_THIRDPARTY_SOURCES}
 )
+add_library(neutrino::crate ALIAS crate)
 
-# Required for shared library builds
-set_target_properties(crate_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(crate PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-target_compile_features(crate_objects PUBLIC cxx_std_20)
+target_compile_features(crate PUBLIC cxx_std_20)
+
+# Generate export header
+generate_export_header(crate
+        EXPORT_FILE_NAME ${PROJECT_BINARY_DIR}/include/crate/crate_export.h
+)
 
 # Mark tl::expected includes as SYSTEM to suppress warnings from third-party code
 get_target_property(_expected_inc tl::expected INTERFACE_INCLUDE_DIRECTORIES)
 if(_expected_inc)
-    target_include_directories(crate_objects SYSTEM PUBLIC ${_expected_inc})
+    target_include_directories(crate SYSTEM PUBLIC ${_expected_inc})
 endif()
-target_link_libraries(crate_objects PUBLIC tl::expected)
+target_link_libraries(crate PUBLIC tl::expected)
 
-target_include_directories(crate_objects
+target_include_directories(crate
         PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${miniz_SOURCE_DIR}>
 )
-
-# Generate export header (needed before compiling objects)
-generate_export_header(crate_objects
-        BASE_NAME crate
-        EXPORT_FILE_NAME ${PROJECT_BINARY_DIR}/include/crate/crate_export.h
-)
-
-# For testing, we need to define the export macro as empty (static linking)
-target_compile_definitions(crate_objects PRIVATE CRATE_STATIC_DEFINE)
 
 # Miniz configuration - must match the defines in inflate.cc
 # Also disable warnings for third-party code
@@ -258,42 +257,14 @@ set_source_files_properties(
         COMPILE_OPTIONS "-w"
 )
 
-neutrino_target_warnings(crate_objects)
-neutrino_target_sanitizers(crate_objects)
-
-# ============================================================================
-# Main library target (from objects)
-# ============================================================================
-
-neutrino_library_type(crate _lib_type)
-
-add_library(crate ${_lib_type} $<TARGET_OBJECTS:crate_objects>)
-add_library(neutrino::crate ALIAS crate)
-
-set_target_properties(crate PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-
-target_compile_features(crate PUBLIC cxx_std_20)
-
-target_link_libraries(crate PUBLIC tl::expected)
-
-target_include_directories(crate
-        PUBLIC
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-        PRIVATE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-
 # ============================================================================
 # Optional libarchive support
 # ============================================================================
 
 if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
-    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_LIBARCHIVE)
     target_compile_definitions(crate PUBLIC CRATE_WITH_LIBARCHIVE)
 
-    target_include_directories(crate_objects PRIVATE
+    target_include_directories(crate PRIVATE
         $<BUILD_INTERFACE:${libarchive_SOURCE_DIR}/libarchive>
         $<BUILD_INTERFACE:${libarchive_BINARY_DIR}>
     )
@@ -306,10 +277,9 @@ endif()
 # ============================================================================
 
 if(NEUTRINO_CRATE_WITH_ZSTD)
-    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_ZSTD)
     target_compile_definitions(crate PUBLIC CRATE_WITH_ZSTD)
 
-    target_include_directories(crate_objects PRIVATE
+    target_include_directories(crate PRIVATE
         $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib>
     )
 
@@ -326,10 +296,9 @@ endif()
 # ============================================================================
 
 if(NEUTRINO_CRATE_WITH_BROTLI)
-    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_BROTLI)
     target_compile_definitions(crate PUBLIC CRATE_WITH_BROTLI)
 
-    target_include_directories(crate_objects PRIVATE
+    target_include_directories(crate PRIVATE
         $<BUILD_INTERFACE:${brotli_SOURCE_DIR}/c/include>
     )
 
@@ -343,10 +312,9 @@ endif()
 # ============================================================================
 
 if(NEUTRINO_CRATE_WITH_BZIP2)
-    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_BZIP2)
     target_compile_definitions(crate PUBLIC CRATE_WITH_BZIP2)
 
-    target_include_directories(crate_objects PRIVATE
+    target_include_directories(crate PRIVATE
         $<BUILD_INTERFACE:${bzip2_SOURCE_DIR}>
     )
 
@@ -369,10 +337,9 @@ endif()
 # ============================================================================
 
 if(NEUTRINO_CRATE_WITH_XZ)
-    target_compile_definitions(crate_objects PUBLIC CRATE_WITH_XZ)
     target_compile_definitions(crate PUBLIC CRATE_WITH_XZ)
 
-    target_include_directories(crate_objects PRIVATE
+    target_include_directories(crate PRIVATE
         $<BUILD_INTERFACE:${xz_SOURCE_DIR}/src/liblzma/api>
     )
 
