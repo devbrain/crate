@@ -888,7 +888,7 @@ TEST_SUITE("Decompressor istream factories") {
 #ifdef CRATE_WITH_BZIP2
     TEST_CASE("make_bzip2_istream decompresses LICENSE.bz2") {
         auto bz2_path = BZ2_DIR / "LICENSE.bz2";
-        if (!std::filesystem::exists(bz2_path)) return;
+        REQUIRE(std::filesystem::exists(bz2_path));
 
         auto expected = read_file(LICENSE_FILE);
         REQUIRE(!expected.empty());
@@ -909,7 +909,7 @@ TEST_SUITE("Decompressor istream factories") {
 #ifdef CRATE_WITH_XZ
     TEST_CASE("make_xz_istream decompresses LICENSE.xz") {
         auto xz_path = XZ_DIR / "LICENSE.xz";
-        if (!std::filesystem::exists(xz_path)) return;
+        REQUIRE(std::filesystem::exists(xz_path));
 
         auto expected = read_file(LICENSE_FILE);
         REQUIRE(!expected.empty());
@@ -930,7 +930,7 @@ TEST_SUITE("Decompressor istream factories") {
 #ifdef CRATE_WITH_ZSTD
     TEST_CASE("make_zstd_istream decompresses LICENSE.zst") {
         auto zst_path = ZSTD_DIR / "LICENSE.zst";
-        if (!std::filesystem::exists(zst_path)) return;
+        REQUIRE(std::filesystem::exists(zst_path));
 
         auto expected = read_file(LICENSE_FILE);
         REQUIRE(!expected.empty());
@@ -951,7 +951,7 @@ TEST_SUITE("Decompressor istream factories") {
 #ifdef CRATE_WITH_BROTLI
     TEST_CASE("make_brotli_istream decompresses LICENSE.br") {
         auto br_path = BROTLI_DIR / "LICENSE.br";
-        if (!std::filesystem::exists(br_path)) return;
+        REQUIRE(std::filesystem::exists(br_path));
 
         auto expected = read_file(LICENSE_FILE);
         REQUIRE(!expected.empty());

@@ -239,10 +239,7 @@ static byte_vector read_chm_file(const std::filesystem::path& path) {
 TEST_SUITE("ChmArchive - Functional Tests") {
     TEST_CASE("Open and list main.chm") {
         auto path = test::chm_dir() / "main.chm";
-        if (!std::filesystem::exists(path)) {
-            MESSAGE("Test file not found, skipping: ", path.string());
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto data = read_chm_file(path);
         REQUIRE(!data.empty());
@@ -278,10 +275,7 @@ TEST_SUITE("ChmArchive - Functional Tests") {
 
     TEST_CASE("Open and list second.chm") {
         auto path = test::chm_dir() / "second.chm";
-        if (!std::filesystem::exists(path)) {
-            MESSAGE("Test file not found, skipping: ", path.string());
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto data = read_chm_file(path);
         REQUIRE(!data.empty());
@@ -317,10 +311,7 @@ TEST_SUITE("ChmArchive - Functional Tests") {
 
     TEST_CASE("Open and list putty.chm") {
         auto path = test::chm_dir() / "putty.chm";
-        if (!std::filesystem::exists(path)) {
-            MESSAGE("Test file not found, skipping: ", path.string());
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto data = read_chm_file(path);
         REQUIRE(!data.empty());
@@ -367,10 +358,7 @@ TEST_SUITE("ChmArchive - Functional Tests") {
 
     TEST_CASE("Extract uncompressed section 0 file (#SYSTEM)") {
         auto path = test::chm_dir() / "main.chm";
-        if (!std::filesystem::exists(path)) {
-            MESSAGE("Test file not found, skipping: ", path.string());
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto data = read_chm_file(path);
         REQUIRE(!data.empty());
@@ -395,10 +383,7 @@ TEST_SUITE("ChmArchive - Functional Tests") {
 
     TEST_CASE("Extract compressed section 1 file succeeds") {
         auto path = test::chm_dir() / "main.chm";
-        if (!std::filesystem::exists(path)) {
-            MESSAGE("Test file not found, skipping: ", path.string());
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto data = read_chm_file(path);
         REQUIRE(!data.empty());
@@ -436,10 +421,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate #SYSTEM content from main.chm") {
         auto chm_path = test::chm_dir() / "main.chm";
         auto ref_path = test::chm_dir() / "reference" / "main" / "SYSTEM";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());
@@ -471,10 +454,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate #SYSTEM content from second.chm") {
         auto chm_path = test::chm_dir() / "second.chm";
         auto ref_path = test::chm_dir() / "reference" / "second" / "SYSTEM";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());
@@ -505,10 +486,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate #SYSTEM content from putty.chm") {
         auto chm_path = test::chm_dir() / "putty.chm";
         auto ref_path = test::chm_dir() / "reference" / "putty" / "SYSTEM";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());
@@ -540,10 +519,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate main.hhc content (LZX compressed)") {
         auto chm_path = test::chm_dir() / "main.chm";
         auto ref_path = test::chm_dir() / "reference" / "main" / "main.hhc";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());
@@ -577,10 +554,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate second.hhc content (LZX compressed)") {
         auto chm_path = test::chm_dir() / "second.chm";
         auto ref_path = test::chm_dir() / "reference" / "second" / "second.hhc";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());
@@ -611,10 +586,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate chm.css content (LZX compressed)" * doctest::skip(true)) {
         auto chm_path = test::chm_dir() / "putty.chm";
         auto ref_path = test::chm_dir() / "reference" / "putty" / "chm.css";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());
@@ -645,10 +618,8 @@ TEST_SUITE("ChmArchive - Content Validation") {
     TEST_CASE("Validate index.html content (LZX compressed)" * doctest::skip(true)) {
         auto chm_path = test::chm_dir() / "putty.chm";
         auto ref_path = test::chm_dir() / "reference" / "putty" / "index.html";
-        if (!std::filesystem::exists(chm_path) || !std::filesystem::exists(ref_path)) {
-            MESSAGE("Test files not found, skipping");
-            return;
-        }
+        REQUIRE(std::filesystem::exists(chm_path));
+        REQUIRE(std::filesystem::exists(ref_path));
 
         auto data = read_chm_file(chm_path);
         REQUIRE(!data.empty());

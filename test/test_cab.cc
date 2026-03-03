@@ -100,11 +100,10 @@ TEST_SUITE("CabArchive - File Tests (test-cab)") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = cab_archive::open(path);
-        if (archive.has_value()) {
-            for (const auto& entry : (*archive)->files()) {
-                // Filenames should be sanitized - no ".." sequences
-                CHECK(entry.name.find("..") == std::string::npos);
-            }
+        REQUIRE(archive.has_value());
+        for (const auto& entry : (*archive)->files()) {
+            // Filenames should be sanitized - no ".." sequences
+            CHECK(entry.name.find("..") == std::string::npos);
         }
     }
 }
@@ -446,16 +445,18 @@ TEST_SUITE("CabArchive - Security/CVE Tests") {
                 auto data = (*archive)->extract(entry);
                 CHECK_FALSE(data.has_value());
             }
+        } else {
+            CHECK(archive.error().code() != error_code::Success);
         }
-        // Either fails to open or fails to extract - both are safe
     }
 
     TEST_CASE("CVE-2017-11423 - Filename over-read - should not crash") {
         auto path = test::mspack_test_dir() / "cve-2017-11423-fname-overread.cab";
         REQUIRE(std::filesystem::exists(path));
 
-        // Just test that it doesn't crash
+        // Must not crash — open returns either a valid archive or an error
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("CVE-2018-18584 - QTM max size block - should handle safely") {
@@ -468,7 +469,10 @@ TEST_SUITE("CabArchive - Security/CVE Tests") {
         REQUIRE(archive.has_value());
         for (const auto& entry : (*archive)->files()) {
             auto data = (*archive)->extract(entry);
-            // May succeed or fail - the key is no crash/overflow
+            // May succeed or fail — the key is no crash/overflow
+            if (data.has_value()) {
+                CHECK(data->size() == entry.uncompressed_size);
+            }
         }
     }
 
@@ -691,61 +695,70 @@ TEST_SUITE("CabArchive - Multi-part/Split CABs") {
         auto path = test::cab_dir() / "split-1.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
-        // Multi-part CABs may or may not open depending on implementation
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Split CAB part 2") {
         auto path = test::cab_dir() / "split-2.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Split CAB part 3") {
         auto path = test::cab_dir() / "split-3.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Split CAB part 4") {
         auto path = test::cab_dir() / "split-4.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Split CAB part 5") {
         auto path = test::cab_dir() / "split-5.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Multi-part basic part 1") {
         auto path = test::mspack_test_dir() / "multi_basic_pt1.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Multi-part basic part 2") {
         auto path = test::mspack_test_dir() / "multi_basic_pt2.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Multi-part basic part 3") {
         auto path = test::mspack_test_dir() / "multi_basic_pt3.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Multi-part basic part 4") {
         auto path = test::mspack_test_dir() / "multi_basic_pt4.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 
     TEST_CASE("Multi-part basic part 5") {
         auto path = test::mspack_test_dir() / "multi_basic_pt5.cab";
         REQUIRE(std::filesystem::exists(path));
         auto archive = cab_archive::open(path);
+        CHECK((archive.has_value() || archive.error().code() != error_code::Success));
     }
 }
 
@@ -757,7 +770,12 @@ TEST_SUITE("CabArchive - Additional CVE Tests") {
         if (archive.has_value()) {
             for (const auto& entry : (*archive)->files()) {
                 auto data = (*archive)->extract(entry);
+                if (data.has_value()) {
+                    CHECK(data->size() <= entry.uncompressed_size * 2);
+                }
             }
+        } else {
+            CHECK(archive.error().code() != error_code::Success);
         }
     }
 }

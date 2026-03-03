@@ -31,6 +31,8 @@ TEST_SUITE("HypArchive - Basic") {
         auto archive = hyp_archive::open(invalid_data);
         if (archive.has_value()) {
             CHECK((*archive)->files().empty());
+        } else {
+            CHECK(archive.error().code() != error_code::Success);
         }
     }
 
@@ -39,6 +41,8 @@ TEST_SUITE("HypArchive - Basic") {
         auto archive = hyp_archive::open(empty);
         if (archive.has_value()) {
             CHECK((*archive)->files().empty());
+        } else {
+            CHECK(archive.error().code() != error_code::Success);
         }
     }
 }

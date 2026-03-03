@@ -25,10 +25,8 @@ TEST_SUITE("LzxDecompressor") {
         std::array<u8, 16> output{};
 
         auto result = decompressor.decompress(data, output);
-        // Empty input should fail or return 0 bytes
-        if (result.has_value()) {
-            CHECK(*result == 0);
-        }
+        // Empty input must either fail or produce 0 bytes
+        CHECK((!result.has_value() || *result == 0));
     }
 
     TEST_CASE("Truncated input") {

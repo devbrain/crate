@@ -87,6 +87,12 @@ const std::vector<TestInfo> ALL_TESTS = {
     {58, "unrar_test_58.part1.rar", "Multivolume RAR5 with recovery", "", true, false, false, false, false, false},
 };
 
+// Check whether the external unrar binary is available (cached).
+bool unrar_available() {
+    static const bool avail = (std::system("unrar --version > /dev/null 2>&1") == 0);
+    return avail;
+}
+
 // Helper to run unrar and extract files to a temp directory
 // Returns map of filename -> file contents
 std::map<std::string, std::vector<u8>> extract_with_unrar(
@@ -537,20 +543,21 @@ TEST_SUITE("RarArchive - RAR3 Format") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("RAR3 not yet supported: ", archive.error().message());
             return;
         }
 
         auto expected = extract_with_unrar(path);
-        if (expected.empty()) {
+        if (!unrar_available()) {
+            MESSAGE("unrar not available, skipping extraction comparison");
             return;
         }
+        REQUIRE_MESSAGE(!expected.empty(), "unrar extraction failed for " << path.string());
 
         auto actual = extract_with_mspack(**archive);
 
         std::string error;
         CHECK(compare_extractions(expected, actual, error));
-
     }
 
     TEST_CASE("Test 21 - RAR3 national chars") {
@@ -559,20 +566,21 @@ TEST_SUITE("RarArchive - RAR3 Format") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("RAR3 not yet supported: ", archive.error().message());
             return;
         }
 
         auto expected = extract_with_unrar(path);
-        if (expected.empty()) {
+        if (!unrar_available()) {
+            MESSAGE("unrar not available, skipping extraction comparison");
             return;
         }
+        REQUIRE_MESSAGE(!expected.empty(), "unrar extraction failed for " << path.string());
 
         auto actual = extract_with_mspack(**archive);
 
         std::string error;
         CHECK(compare_extractions(expected, actual, error));
-
     }
 
     TEST_CASE("Test 23 - RAR3 symlinks") {
@@ -581,20 +589,21 @@ TEST_SUITE("RarArchive - RAR3 Format") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("RAR3 not yet supported: ", archive.error().message());
             return;
         }
 
         auto expected = extract_with_unrar(path);
-        if (expected.empty()) {
+        if (!unrar_available()) {
+            MESSAGE("unrar not available, skipping extraction comparison");
             return;
         }
+        REQUIRE_MESSAGE(!expected.empty(), "unrar extraction failed for " << path.string());
 
         auto actual = extract_with_mspack(**archive);
 
         std::string error;
         CHECK(compare_extractions(expected, actual, error));
-
     }
 
     TEST_CASE("Test 47 - RAR3 symlink national chars") {
@@ -603,20 +612,21 @@ TEST_SUITE("RarArchive - RAR3 Format") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("RAR3 not yet supported: ", archive.error().message());
             return;
         }
 
         auto expected = extract_with_unrar(path);
-        if (expected.empty()) {
+        if (!unrar_available()) {
+            MESSAGE("unrar not available, skipping extraction comparison");
             return;
         }
+        REQUIRE_MESSAGE(!expected.empty(), "unrar extraction failed for " << path.string());
 
         auto actual = extract_with_mspack(**archive);
 
         std::string error;
         CHECK(compare_extractions(expected, actual, error));
-
     }
 }
 
@@ -797,8 +807,7 @@ TEST_SUITE("RarArchive - Encrypted") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
-            // Encrypted archives might fail to open
+            MESSAGE("Encrypted archive open failed (expected): ", archive.error().message());
             return;
         }
 
@@ -826,14 +835,12 @@ TEST_SUITE("RarArchive - Encrypted") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("Encrypted archive open failed (expected): ", archive.error().message());
             return;
         }
 
         // Check encryption status (may be header-encrypted with no file list)
         CHECK((*archive)->has_encrypted_files());
-        if ((*archive)->is_header_encrypted()) {
-        }
     }
 
     TEST_CASE("Test 22 - RAR3 national char password") {
@@ -842,11 +849,11 @@ TEST_SUITE("RarArchive - Encrypted") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("RAR3 encrypted not yet supported: ", archive.error().message());
             return;
         }
 
-        // RAR3 format - may or may not be supported
+        CHECK((*archive)->has_encrypted_files());
     }
 }
 
@@ -859,7 +866,7 @@ TEST_SUITE("RarArchive - Multivolume") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("Multivolume RAR3 open failed (expected): ", archive.error().message());
             return;
         }
 
@@ -873,7 +880,7 @@ TEST_SUITE("RarArchive - Multivolume") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("Multivolume RAR5 open failed (expected): ", archive.error().message());
             return;
         }
 
@@ -886,10 +893,11 @@ TEST_SUITE("RarArchive - Multivolume") {
 
         auto archive = rar_archive::open(path);
         if (!archive.has_value()) {
-
+            MESSAGE("Multivolume RAR5 open failed (expected): ", archive.error().message());
             return;
         }
 
+        CHECK(!(*archive)->files().empty());
     }
 }
 
@@ -1042,16 +1050,23 @@ TEST_SUITE("RarArchive - Corpus Summary") {
         int failed = 0;
         std::vector<std::string> failures;
 
+        if (!unrar_available()) {
+            MESSAGE("unrar not available, skipping full extraction test");
+            return;
+        }
+
         for (int test_num : basic_tests) {
             std::string archive_name = std::string("unrar_test_") + (test_num < 10 ? "0" : "") + std::to_string(test_num) + ".rar";
             auto path = UNRAR_TEST_DIR / archive_name;
 
             if (!std::filesystem::exists(path)) {
+                FAIL_CHECK("Corpus file missing: " << archive_name);
                 continue;
             }
 
             auto expected = extract_with_unrar(path);
             if (expected.empty()) {
+                FAIL_CHECK("unrar extraction returned empty for " << archive_name);
                 continue;
             }
 

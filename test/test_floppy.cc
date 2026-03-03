@@ -110,23 +110,22 @@ TEST_SUITE("FloppyImage - Turbo Pascal Disks") {
             }
         }
 
-        if (target) {
-            MESSAGE("Extracting: " << target->name << " (" << target->uncompressed_size << " bytes)");
+        REQUIRE(target != nullptr);
+        MESSAGE("Extracting: " << target->name << " (" << target->uncompressed_size << " bytes)");
 
-            auto content = (*image)->extract(*target);
-            REQUIRE(content.has_value());
-            CHECK(content->size() == target->uncompressed_size);
+        auto content = (*image)->extract(*target);
+        REQUIRE(content.has_value());
+        CHECK(content->size() == target->uncompressed_size);
 
-            // Check that content is not all zeros
-            bool all_zeros = true;
-            for (u8 b : *content) {
-                if (b != 0) {
-                    all_zeros = false;
-                    break;
-                }
+        // Check that content is not all zeros
+        bool all_zeros = true;
+        for (u8 b : *content) {
+            if (b != 0) {
+                all_zeros = false;
+                break;
             }
-            CHECK_FALSE(all_zeros);
         }
+        CHECK_FALSE(all_zeros);
     }
 
     TEST_CASE("Extract all files from Disk 1") {
