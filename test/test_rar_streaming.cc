@@ -119,9 +119,7 @@ TEST_SUITE("Rar29Decompressor - Streaming") {
 
     TEST_CASE("Streaming from RAR archive") {
         auto path = ::test::rar_dir() / "unrar_test_01.rar";
-        if (!std::filesystem::exists(path)) {
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
@@ -179,9 +177,7 @@ TEST_SUITE("Rar5Decompressor - Streaming") {
 TEST_SUITE("RAR Decompressor - Integration Streaming Tests") {
     TEST_CASE("RAR4 archive extraction verifies streaming works") {
         auto path = ::test::rar_dir() / "unrar_test_01.rar";
-        if (!std::filesystem::exists(path)) {
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());
@@ -200,9 +196,7 @@ TEST_SUITE("RAR Decompressor - Integration Streaming Tests") {
 
     TEST_CASE("RAR4 PPM extraction verifies streaming") {
         auto path = ::test::rar_dir() / "ppm_test.rar";
-        if (!std::filesystem::exists(path)) {
-            return;
-        }
+        REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
         REQUIRE(archive.has_value());

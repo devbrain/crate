@@ -357,9 +357,7 @@ TEST_SUITE("Progress - StuffIt Archive") {
             }
         }
 
-        if (!test_entry) {
-            return;
-        }
+        REQUIRE(test_entry != nullptr);
 
         archive_progress_tracker tracker;
         (*archive)->set_byte_progress_callback(tracker.make_callback());
@@ -400,13 +398,8 @@ TEST_SUITE("Progress - CHM Archive") {
         REQUIRE(std::filesystem::exists(archive_path));
 
         auto archive = chm_archive::open(archive_path);
-        if (!archive.has_value()) {
-            return;
-        }
-
-        if ((*archive)->files().empty()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
+        REQUIRE(!(*archive)->files().empty());
 
         // Find first non-directory file with content
         const file_entry* test_entry = nullptr;
@@ -417,21 +410,20 @@ TEST_SUITE("Progress - CHM Archive") {
             }
         }
 
-        if (!test_entry) {
-            return;
-        }
+        REQUIRE(test_entry != nullptr);
 
         archive_progress_tracker tracker;
         (*archive)->set_byte_progress_callback(tracker.make_callback());
 
         auto result = (*archive)->extract(*test_entry);
 
-        if (!result.has_value()) {
-            return;
+        // CVE sample may fail extraction — verify callback only on success
+        if (result.has_value()) {
+            CHECK(tracker.call_count > 0);
+            CHECK(tracker.last_bytes_written == result->size());
+        } else {
+            CHECK(result.error().code() != error_code::Success);
         }
-
-        CHECK(tracker.call_count > 0);
-        CHECK(tracker.last_bytes_written == result->size());
     }
 }
 
@@ -453,9 +445,7 @@ TEST_SUITE("Progress - ZIP Archive") {
             }
         }
 
-        if (!test_entry) {
-            return;
-        }
+        REQUIRE(test_entry != nullptr);
 
         archive_progress_tracker tracker;
         (*archive)->set_byte_progress_callback(tracker.make_callback());
@@ -486,9 +476,7 @@ TEST_SUITE("Progress - Floppy Image") {
             }
         }
 
-        if (!test_entry) {
-            return;
-        }
+        REQUIRE(test_entry != nullptr);
 
         archive_progress_tracker tracker;
         (*archive)->set_byte_progress_callback(tracker.make_callback());
@@ -523,9 +511,7 @@ TEST_SUITE("Progress - libarchive Archive") {
             }
         }
 
-        if (!test_entry) {
-            return;
-        }
+        REQUIRE(test_entry != nullptr);
 
         archive_progress_tracker tracker;
         (*archive)->set_byte_progress_callback(tracker.make_callback());

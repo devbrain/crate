@@ -261,10 +261,7 @@ TEST_SUITE("LzxDecompressor - CAB Streaming") {
                 const auto& block = payload.blocks[i];
                 byte_vector block_output(block.uncompressed_size);
                 auto result = decompressor.decompress(block.compressed, block_output);
-                if (!result) {
-                    // LZX decompression not fully implemented - skip streaming checks
-                    return;
-                }
+                REQUIRE(result.has_value());
                 REQUIRE(*result == block.uncompressed_size);
                 expected.insert(expected.end(), block_output.begin(),
                     block_output.begin() + static_cast<std::ptrdiff_t>(*result));

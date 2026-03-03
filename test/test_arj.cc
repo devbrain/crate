@@ -48,6 +48,28 @@ TEST_SUITE("ArjArchive - Basic") {
     }
 }
 
+TEST_SUITE("ArjArchive - MD5") {
+    TEST_CASE("MD5 known vectors") {
+        auto md5 = [](const char* input, size_t len) {
+            MD5_CTX ctx;
+            MD5_Init(&ctx);
+            MD5_Update(&ctx, input, static_cast<unsigned long>(len));
+            unsigned char digest[MD5_DIGEST_LENGTH];
+            MD5_Final(digest, &ctx);
+            char hex[33];
+            for (int i = 0; i < 16; i++)
+                snprintf(hex + i * 2, 3, "%02x", digest[i]);
+            return std::string(hex);
+        };
+
+        CHECK(md5("", 0) == "d41d8cd98f00b204e9800998ecf8427e");
+        CHECK(md5("a", 1) == "0cc175b9c0f1b6a831c399e269772661");
+        CHECK(md5("abc", 3) == "900150983cd24fb0d6963f7d28e17f72");
+        CHECK(md5("message digest", 14) == "f96b697d7cb7938d525a2f31aaf161d0");
+        CHECK(md5("123456789", 9) == "25f9e794323b453885f5181f1b624d0b");
+    }
+}
+
 TEST_SUITE("ArjArchive - CRC32") {
     TEST_CASE("CRC32 empty data") {
         byte_vector empty;

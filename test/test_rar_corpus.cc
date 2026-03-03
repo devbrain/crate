@@ -399,9 +399,7 @@ TEST_SUITE("RarArchive - RAR3 Format") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "16");
     }
@@ -411,9 +409,7 @@ TEST_SUITE("RarArchive - RAR3 Format") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "21");
     }
@@ -423,9 +419,7 @@ TEST_SUITE("RarArchive - RAR3 Format") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "23");
     }
@@ -435,9 +429,7 @@ TEST_SUITE("RarArchive - RAR3 Format") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "47");
     }
@@ -582,9 +574,7 @@ TEST_SUITE("RarArchive - Encrypted") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         // Check that files are marked as encrypted
         CHECK((*archive)->has_encrypted_files());
@@ -609,9 +599,7 @@ TEST_SUITE("RarArchive - Encrypted") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         // Check encryption status (may be header-encrypted with no file list)
         CHECK((*archive)->has_encrypted_files());
@@ -622,9 +610,7 @@ TEST_SUITE("RarArchive - Encrypted") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         CHECK((*archive)->has_encrypted_files());
     }
@@ -638,9 +624,7 @@ TEST_SUITE("RarArchive - Multivolume") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         // Multi-volume detection should be surfaced via API
         CHECK((*archive)->is_multivolume());
@@ -651,9 +635,7 @@ TEST_SUITE("RarArchive - Multivolume") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         CHECK(!(*archive)->files().empty());
     }
@@ -663,9 +645,7 @@ TEST_SUITE("RarArchive - Multivolume") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         CHECK(!(*archive)->files().empty());
     }
@@ -679,9 +659,7 @@ TEST_SUITE("RarArchive - SFX") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "54");
     }
@@ -691,9 +669,7 @@ TEST_SUITE("RarArchive - SFX") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "55");
     }
@@ -703,9 +679,7 @@ TEST_SUITE("RarArchive - SFX") {
         REQUIRE(std::filesystem::exists(path));
 
         auto archive = rar_archive::open(path);
-        if (!archive.has_value()) {
-            return;
-        }
+        REQUIRE(archive.has_value());
 
         verify_extraction(**archive, "56");
     }
@@ -793,6 +767,7 @@ TEST_SUITE("RarArchive - Corpus Summary") {
         }
 
         (void)failed_archives;  // Used for debugging
+        CHECK(opened > 0);
     }
 
     TEST_CASE("Full extraction test - all basic RAR5 archives") {
@@ -841,10 +816,6 @@ TEST_SUITE("RarArchive - Corpus Summary") {
         CHECK(failed == 0);
     }
 
-    TEST_CASE("Known limitations summary") {
-        // Encrypted headers (test 05), SFX (54-56), multivolume (17, 57)
-        // require features not yet implemented
-    }
 }
 
 // Multi-volume archive tests
@@ -1009,8 +980,11 @@ TEST_SUITE("RarArchive - Multivolume") {
             vol_sizes.push_back(static_cast<size_t>(vol_size));
         }
 
-        // Check parts against volume sizes
-        (void)vol_sizes;
+        // Check all volumes were loaded
+        CHECK(vol_sizes.size() == 6);
+        size_t total = 0;
+        for (auto s : vol_sizes) total += s;
+        CHECK(total > 0);
     }
 }
 
