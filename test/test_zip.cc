@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <crate/formats/zip.hh>
 #include <crate/test_config.hh>
+#include <array>
 
 using namespace crate;
 

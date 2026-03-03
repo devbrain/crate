@@ -4,6 +4,7 @@
 #include <crate/compression/mszip.hh>
 #include <crate/compression/lzx.hh>
 #include <crate/compression/quantum.hh>
+#include <algorithm>
 #include <cstring>
 
 namespace crate {

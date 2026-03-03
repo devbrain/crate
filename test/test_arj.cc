@@ -7,6 +7,8 @@
 #include <crate/test_config.hh>
 #include <array>
 #include <cstring>
+#include <fstream>
+#include <filesystem>
 
 using namespace crate;
 
@@ -138,55 +140,21 @@ TEST_SUITE("ArjArchive - Path Sanitization") {
 TEST_SUITE("ArjArchive - Corpus") {
     const auto CORPUS_DIR = test::arj_dir();
 
-    std::optional<byte_vector> extract_with_arj(const std::filesystem::path& archive_path,
-                                                const std::string& filename) {
-        namespace fs = std::filesystem;
+    // Reference file for all ARJ corpus tests: testdata/LICENSE
+    // All test archives contain this single file (11357 bytes, CRC32=0x7B5D04BC)
+    constexpr size_t LICENSE_SIZE = 11357;
+    constexpr u32 LICENSE_CRC32 = 0x7B5D04BCU;
 
-        auto temp_dir = fs::temp_directory_path() / "arj_test_extract";
-        fs::remove_all(temp_dir);
-        fs::create_directories(temp_dir);
-
-        std::string cmd = "cd " + temp_dir.string() + " && /usr/bin/arj x -y " +
-                          archive_path.string() + " " + filename + " >/dev/null 2>&1";
-        int ret = std::system(cmd.c_str());
-        if (ret != 0) {
-            fs::remove_all(temp_dir);
-            return std::nullopt;
-        }
-
-        auto extracted_path = temp_dir / filename;
-        if (!fs::exists(extracted_path)) {
-            fs::remove_all(temp_dir);
-            return std::nullopt;
-        }
-
-        std::ifstream file(extracted_path, std::ios::binary);
-        if (!file) {
-            fs::remove_all(temp_dir);
-            return std::nullopt;
-        }
-
-        byte_vector data((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
-
-        fs::remove_all(temp_dir);
-        return data;
-    }
-
-    bool compare_extraction(const byte_vector& expected, const byte_vector& actual) {
-        if (expected.size() != actual.size()) {
-            return false;
-        }
-        return std::memcmp(expected.data(), actual.data(), expected.size()) == 0;
+    byte_vector read_reference_file() {
+        auto ref_path = test::testdata_dir() / "LICENSE";
+        std::ifstream file(ref_path, std::ios::binary);
+        return byte_vector((std::istreambuf_iterator<char>(file)),
+                          std::istreambuf_iterator<char>());
     }
 
     TEST_CASE("Method 0 - Stored") {
         auto archive_path = CORPUS_DIR / "stored.arj";
         REQUIRE(std::filesystem::exists(archive_path));
-
-        auto expected = extract_with_arj(archive_path, "LICENSE");
-        REQUIRE(expected.has_value());
-        REQUIRE(expected->size() == 11357);
 
         auto archive = arj_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -194,20 +162,21 @@ TEST_SUITE("ArjArchive - Corpus") {
 
         const auto& entry = (*archive)->files()[0];
         CHECK(entry.name == "LICENSE");
-        CHECK(entry.uncompressed_size == 11357);
+        CHECK(entry.uncompressed_size == LICENSE_SIZE);
 
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
-        CHECK(compare_extraction(*expected, *actual));
+        CHECK(actual->size() == LICENSE_SIZE);
+        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
+
+        auto ref = read_reference_file();
+        REQUIRE(ref.size() == LICENSE_SIZE);
+        CHECK(std::memcmp(actual->data(), ref.data(), ref.size()) == 0);
     }
 
     TEST_CASE("Method 1 - LZH") {
         auto archive_path = CORPUS_DIR / "method1.arj";
         REQUIRE(std::filesystem::exists(archive_path));
-
-        auto expected = extract_with_arj(archive_path, "LICENSE");
-        REQUIRE(expected.has_value());
-        REQUIRE(expected->size() == 11357);
 
         auto archive = arj_archive::open(archive_path);
         REQUIRE(archive.has_value());
@@ -215,7 +184,8 @@ TEST_SUITE("ArjArchive - Corpus") {
         const auto& entry = (*archive)->files()[0];
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
-        CHECK(compare_extraction(*expected, *actual));
+        CHECK(actual->size() == LICENSE_SIZE);
+        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
     }
 
     TEST_CASE("Streaming extract_to - LZH") {
@@ -233,58 +203,49 @@ TEST_SUITE("ArjArchive - Corpus") {
         auto result = (*archive)->extract_to(entry, output);
         REQUIRE(result.has_value());
         CHECK(*result == expected->size());
-        CHECK(compare_extraction(*expected, output.data()));
+        CHECK(std::memcmp(expected->data(), output.data().data(), expected->size()) == 0);
     }
 
     TEST_CASE("Method 2 - LZH") {
         auto archive_path = CORPUS_DIR / "method2.arj";
         REQUIRE(std::filesystem::exists(archive_path));
 
-        auto expected = extract_with_arj(archive_path, "LICENSE");
-        REQUIRE(expected.has_value());
-        REQUIRE(expected->size() == 11357);
-
         auto archive = arj_archive::open(archive_path);
         REQUIRE(archive.has_value());
 
         const auto& entry = (*archive)->files()[0];
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
-        CHECK(compare_extraction(*expected, *actual));
+        CHECK(actual->size() == LICENSE_SIZE);
+        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
     }
 
     TEST_CASE("Method 3 - LZH") {
         auto archive_path = CORPUS_DIR / "method3.arj";
         REQUIRE(std::filesystem::exists(archive_path));
 
-        auto expected = extract_with_arj(archive_path, "LICENSE");
-        REQUIRE(expected.has_value());
-        REQUIRE(expected->size() == 11357);
-
         auto archive = arj_archive::open(archive_path);
         REQUIRE(archive.has_value());
 
         const auto& entry = (*archive)->files()[0];
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
-        CHECK(compare_extraction(*expected, *actual));
+        CHECK(actual->size() == LICENSE_SIZE);
+        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
     }
 
     TEST_CASE("Method 4 - LZ77") {
         auto archive_path = CORPUS_DIR / "method4.arj";
         REQUIRE(std::filesystem::exists(archive_path));
 
-        auto expected = extract_with_arj(archive_path, "LICENSE");
-        REQUIRE(expected.has_value());
-        REQUIRE(expected->size() == 11357);
-
         auto archive = arj_archive::open(archive_path);
         REQUIRE(archive.has_value());
 
         const auto& entry = (*archive)->files()[0];
         auto actual = (*archive)->extract(entry);
         REQUIRE(actual.has_value());
-        CHECK(compare_extraction(*expected, *actual));
+        CHECK(actual->size() == LICENSE_SIZE);
+        CHECK(eval_crc_32(*actual) == LICENSE_CRC32);
     }
 
     TEST_CASE("Wrong CRC32 - should fail extraction") {
