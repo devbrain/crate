@@ -1,3 +1,6 @@
 
 # Use bd merge for beads JSONL files
 .beads/issues.jsonl merge=beads
+
+# Archive fixtures and expected output must keep their exact bytes on all platforms.
+/testdata/** -text

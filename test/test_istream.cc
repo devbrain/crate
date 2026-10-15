@@ -633,20 +633,23 @@ TEST_SUITE("Archive open(istream) non-zero offset") {
                       static_cast<std::streamsize>(combined.size()));
         }
 
-        // Open and seek past the prefix
-        std::ifstream file(tmp_path, std::ios::binary);
-        file.seekg(16);
+        // Close all readers before removing the file, as required on Windows.
+        {
+            // Open and seek past the prefix
+            std::ifstream file(tmp_path, std::ios::binary);
+            file.seekg(16);
 
-        auto archive = zip_archive::open(file);
-        REQUIRE(archive.has_value());
-        auto& files = (*archive)->files();
-        REQUIRE(files.size() == 1);
-        CHECK(files[0].name == "hello.txt");
+            auto archive = zip_archive::open(file);
+            REQUIRE(archive.has_value());
+            auto& files = (*archive)->files();
+            REQUIRE(files.size() == 1);
+            CHECK(files[0].name == "hello.txt");
 
-        auto content = (*archive)->extract(files[0]);
-        REQUIRE(content.has_value());
-        std::string text(content->begin(), content->end());
-        CHECK(text == "Hello, World!\n");
+            auto content = (*archive)->extract(files[0]);
+            REQUIRE(content.has_value());
+            std::string text(content->begin(), content->end());
+            CHECK(text == "Hello, World!\n");
+        }
 
         std::filesystem::remove(tmp_path);
     }
