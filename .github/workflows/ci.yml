@@ -13,12 +13,12 @@ jobs:
       matrix:
         include:
           # Linux GCC
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             compiler: gcc
             version: 13
 
           # Linux Clang
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             compiler: clang
             version: 18
 
