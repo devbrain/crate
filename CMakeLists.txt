@@ -56,9 +56,9 @@ endif()
 # Dependencies
 # ============================================================================
 
-# Fetch tl::expected (std::expected backport for C++20)
-include(${NEUTRINO_CMAKE_DIR}/deps/expected.cmake)
-neutrino_fetch_expected()
+# Fetch failsafe (error handling and expected)
+include(${NEUTRINO_CMAKE_DIR}/deps/failsafe.cmake)
+neutrino_fetch_failsafe()
 
 # Fetch miniz sources (not as a library, we embed it directly)
 # SOURCE_SUBDIR points to non-existent directory to prevent add_subdirectory

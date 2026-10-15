@@ -232,7 +232,7 @@ get_target_property(_expected_inc tl::expected INTERFACE_INCLUDE_DIRECTORIES)
 if(_expected_inc)
     target_include_directories(crate SYSTEM PUBLIC ${_expected_inc})
 endif()
-target_link_libraries(crate PUBLIC tl::expected)
+target_link_libraries(crate PUBLIC neutrino::failsafe)
 
 target_include_directories(crate
         PUBLIC
