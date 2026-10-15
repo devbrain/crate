@@ -109,6 +109,15 @@ if(NEUTRINO_CRATE_WITH_LIBARCHIVE)
     set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
     set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
+    if(MSVC)
+        # libarchive 3.7 uses headerless function probes, which misdeclare these
+        # MSVC intrinsics. Check their actual declarations before configuring it.
+        include(CheckSymbolExists)
+        check_symbol_exists(wcscmp "wchar.h" HAVE_WCSCMP)
+        check_symbol_exists(wcscpy "wchar.h" HAVE_WCSCPY)
+        check_symbol_exists(wcslen "wchar.h" HAVE_WCSLEN)
+    endif()
+
     FetchContent_Declare(libarchive
         GIT_REPOSITORY https://github.com/libarchive/libarchive.git
         GIT_TAG v3.7.7
@@ -144,6 +153,11 @@ if(NEUTRINO_CRATE_WITH_ZSTD)
         PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zstd-cmake-compat.patch || true
     )
     FetchContent_MakeAvailable(zstd)
+    if(MSVC AND TARGET libzstd_shared)
+        # zstd 1.5.6 exposes this directory only to consumers, but its Windows
+        # version resource also includes zstd.h while compiling the DLL itself.
+        target_include_directories(libzstd_shared PRIVATE "${zstd_SOURCE_DIR}/lib")
+    endif()
 endif()
 
 # Fetch and build brotli (optional)
